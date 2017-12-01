@@ -1,0 +1,6 @@
+Background
+At DANS, one of our services is NARCIS (National Academic Research and Collaborations Information System), the national portal for information on scientific research in the Netherlands. You can find it at narcis.nl, but a lot more information can be extracted when aggregating information.
+
+These scripts harvest the information in NARCIS via the OAI-PMH interface, and look into this data, mostly functions I've developed at my work.
+
+It's not really built with portability in mind, and I can't share all my data, but I can share some of it.
