@@ -1,0 +1,170 @@
+FieldFrom;FieldTo;ValFrom;ValTo
+originURL;Bron;https://pure.rug.nl/ws/oai;RUG
+originURL;Bron;http://library.wur.nl/oai;Wageningen UR
+originURL;Bron;http://dare.uva.nl/oai_narcis;UvA
+originURL;Bron;http://repository.ubn.ru.nl/dspace-oai/request;Radboud
+originURL;Bron;http://library.tue.nl/csp/narcis/DARE.Repository.cls;TU/e
+originURL;Bron;https://pure.uvt.nl/ws/oai;Tilburg
+originURL;Bron;https://dspace.library.uu.nl/oai/dare;Universiteit Utrecht
+originURL;Bron;http://doc.utwente.nl/cgi/oai2;Universiteit Twente
+originURL;Bron;https://ris.utwente.nl/ws/oai;Universiteit Twente
+originURL;Bron;https://cris.maastrichtuniversity.nl/ws/oai;Maastricht University
+originURL;Bron;http://dare.ubvu.vu.nl/oai/request;VU
+originURL;Bron;http://oai.tudelft.nl/ir;TU Delft
+originURL;Bron;http://repub.eur.nl/oai;Erasmus
+originURL;Bron;http://oai.tudelft.nl/tno;TNO
+originURL;Bron;https://pure.knaw.nl/ws/oai;KNAW
+originURL;Bron;http://pure.knaw.nl/ws/oai;KNAW
+originURL;Bron;https://openaccess.leidenuniv.nl/oai/request;Leiden university
+originURL;Bron;https://ir.cwi.nl/oai;CWI
+originURL;Bron;http://dare.uva.nl/cgi/arno/oai/naturalis;Naturalis
+originURL;Bron;http://rivm.openrepository.com/rivm-oai/request;RIVM
+originURL;Bron;http://nvl006.nivel.nl/oai/oai.ashx;NIVEL
+originURL;Bron;https://hbo-kennisbank.nl/oai/6e5365d4-4b12-4de9-befd-0843b90ee81c;Hogescholen
+originURL;Bron;http://dare.uva.nl/cgi/arno/oai/Nyenrode;Nyenrode
+originURL;Bron;http://library.swov.nl/oaicat/OAIHandler;SWOV
+originURL;Bron;http://dspace.ou.nl/OAIAggregator/narcisset;Open Universiteit
+originURL;Bron;https://www.differ.nl/oai;DIFFER
+originURL;Bron;http://repository.uvh.nl/uvhoai/request;Universiteit voor Humanistiek
+originURL;Bron;http://oai.tudelft.nl/wodc;WODC - Minist. Veiligheid en Justitie
+originURL;Bron;http://imis.nioz.nl/imis.php;NIOZ
+originURL;Bron;http://dare.uva.nl/cgi/arno/oai/aup;Amsterdam University Press
+originURL;Bron;http://www.scp.nl/oai;Sociaal en Cultureel Planbureau
+originURL;Bron;http://publications.beeldengeluid.nl/oai;Beeld en Geluid
+originURL;Bron;http://oai.tudelft.nl/philips;Philips research
+originURL;Bron;http://oai.tudelft.nl/ihe;UNESCO-IHE
+originURL;Bron;http://theoluniv.ub.rug.nl/cgi/oai2;Een van de theologische universiteiten
+originURL;Bron;http://easy.dans.knaw.nl/oai;DANS-KNAW/Easy
+originURL;Bron;https://dataverse.nl/oai;Tilburg University
+originURL;Bron;http://corpus1.mpi.nl/ds/oaiprovider/oai2;The Language Archive - MPI
+originURL;Bron;http://library.wur.nl/php/oai.php;Wageningen University of Research
+originURL;Bron;http://api.gbif.org/v1/oai-pmh/registry;NLBIF
+originURL;Bron;http://lisspanel.nl/oai/oai2.php;CentERdata (oud, niet meer gebruikte sinds juli 2017)
+originURL;Bron;http://oai-pmh.centerdata.nl/lissdata/oai2.php;CentERdata
+originURL;Bron;http://services.kb.nl/mdo/oai;Koninklijke Bibliotheek
+originURL;Bron;http://data.4tu.nl/oai;4TU.Datacentrum
+originURL;Bron;http://dhsdata.nl/oai/oai2.php;CentERdata (aparte repo)
+type.meta;Type;info:eu-repo/semantics/dataset;Dataset
+type.meta;Type;info:eu-repo/semantics/article;Article
+type.meta;Type;info:eu-repo/semantics/bookreview;Book Review
+type.meta;Type;info:eu-repo/semantics/bookpart;Book part
+type.meta;Type;info:eu-repo/semantics/patent;Patent
+type.meta;Type;info:eu-repo/semantics/conferencepaper;Conference Paper
+type.meta;Type;info:eu-repo/semantics/lecture;Lecture
+type.meta;Type;info:eu-repo/semantics/preprint;Preprint
+type.meta;Type;info:eu-repo/semantics/masterthesis;Master Thesis
+type.meta;Type;info:eu-repo/semantics/contributiontoperiodical;Contribution to periodical
+type.meta;Type;info:eu-repo/semantics/conferenceobject;Conference Object
+type.meta;Type;info:eu-repo/semantics/conferenceproceedings;Conference Proceedings
+type.meta;Type;info:eu-repo/semantics/workingpaper;Working Paper
+type.meta;Type;info:eu-repo/semantics/other;Other
+type.meta;Type;info:eu-repo/semantics/book;Book
+type.meta;Type;info:eu-repo/semantics/annotation;Annotation
+type.meta;Type;info:eu-repo/semantics/report;Report
+type.meta;Type;info:eu-repo/semantics/doctoralthesis;Doctoral Thesis
+type.meta;Type;info:eu-repo/semantics/bachelorthesis;Bachelor Thesis
+type.meta;Type;info:eu-repo/semantics/technicaldocumentation;Technical Documentation
+type.meta;Type;info:eu-repo/semantics/conferenceitem;Conference item
+type.meta;Type;info:eu-repo/semantics/review;Review
+language;LangFull;nl;Nederlands
+language;LangFull;da;Deens
+language;LangFull;la;Latijn
+language;LangFull;tur;Turks
+language;LangFull;th;Thai
+language;LangFull;id;Indonesisch
+language;LangFull;en;Engels
+language;LangFull;und;onbepaald
+language;LangFull;eng;Engels
+language;LangFull;bs;Bosnisch
+language;LangFull;fa;Perzisch¾(Farsi)
+language;LangFull;ms;Maleis
+language;LangFull;fr;Frans
+language;LangFull;no;Noors
+language;LangFull;dut;Nederlands
+language;LangFull;ar;Arabisch
+language;LangFull;uk;Oekra´ens
+language;LangFull;de;Duits
+language;LangFull;pl;Pools
+language;LangFull;zxx;geen taalkundige inhoud
+language;LangFull;cs;Tsjechisch
+language;LangFull;ca;Catalaans
+language;LangFull;ru;Russisch
+language;LangFull;zh;Chinese talen
+language;LangFull;lt;Litouws
+language;LangFull;hr;Kroatisch
+language;LangFull;sl;Sloveens
+language;LangFull;es;Spaans
+language;LangFull;fi;Fins
+language;LangFull;ne;Nepalees
+language;LangFull;gu;Gujarati
+language;LangFull;gl;Galicisch
+language;LangFull;mul;meerdere talen
+language;LangFull;el;Grieks
+language;LangFull;tr;Turks
+language;LangFull;eo;Esperanto
+language;LangFull;bn;Bengaals
+language;LangFull;hu;Hongaars
+language;LangFull;ja;Japans
+language;LangFull;fre;Frans
+language;LangFull;ko;Koreaans
+language;LangFull;ee;Ewe
+language;LangFull;mis;niet gecodeerde taal
+language;LangFull;sv;Zweeds
+language;LangFull;spa;Spaans
+language;LangFull;sr;Servisch
+language;LangFull;eu;Baskisch
+language;LangFull;pt;Portugees
+language;LangFull;fy;Westerlauwers Fries
+language;LangFull;ita;Italiaans
+language;LangFull;ro;Roemeens
+language;LangFull;he;Hebreeuws
+language;LangFull;it;Italiaans
+language;LangFull;ger;Duits
+language;LangFull;por;Portugees
+language;LangFull;et;Estisch
+language;LangFull;nn;Nynorsk¾(Nieuw-Noors)
+originURL;BronCat;https://pure.rug.nl/ws/oai;Universiteit (alg)
+originURL;BronCat;http://library.wur.nl/oai;Universiteit (4TU)
+originURL;BronCat;http://dare.uva.nl/oai_narcis;Universiteit (alg)
+originURL;BronCat;http://repository.ubn.ru.nl/dspace-oai/request;Universiteit (alg)
+originURL;BronCat;http://library.tue.nl/csp/narcis/DARE.Repository.cls;Universiteit (4TU)
+originURL;BronCat;https://pure.uvt.nl/ws/oai;Universiteit (alg)
+originURL;BronCat;https://dspace.library.uu.nl/oai/dare;Universiteit (alg)
+originURL;BronCat;http://doc.utwente.nl/cgi/oai2;Universiteit (4TU)
+originURL;BronCat;https://ris.utwente.nl/ws/oai;Universiteit (4TU)
+originURL;BronCat;https://cris.maastrichtuniversity.nl/ws/oai;Universiteit (alg)
+originURL;BronCat;http://dare.ubvu.vu.nl/oai/request;Universiteit (alg)
+originURL;BronCat;http://oai.tudelft.nl/ir;Universiteit (4TU)
+originURL;BronCat;http://repub.eur.nl/oai;Universiteit (alg)
+originURL;BronCat;http://oai.tudelft.nl/tno;Instituut
+originURL;BronCat;https://pure.knaw.nl/ws/oai;Instituut
+originURL;BronCat;http://pure.knaw.nl/ws/oai;Instituut
+originURL;BronCat;https://openaccess.leidenuniv.nl/oai/request;Universiteit (alg)
+originURL;BronCat;https://ir.cwi.nl/oai;Instituut
+originURL;BronCat;http://dare.uva.nl/cgi/arno/oai/naturalis;Instituut
+originURL;BronCat;http://rivm.openrepository.com/rivm-oai/request;Instituut
+originURL;BronCat;http://nvl006.nivel.nl/oai/oai.ashx;Instituut
+originURL;BronCat;https://hbo-kennisbank.nl/oai/6e5365d4-4b12-4de9-befd-0843b90ee81c;Andere scholen
+originURL;BronCat;http://dare.uva.nl/cgi/arno/oai/Nyenrode;Andere scholen
+originURL;BronCat;http://library.swov.nl/oaicat/OAIHandler;Instituut
+originURL;BronCat;http://dspace.ou.nl/OAIAggregator/narcisset;Andere scholen
+originURL;BronCat;https://www.differ.nl/oai;Instituut
+originURL;BronCat;http://repository.uvh.nl/uvhoai/request;Andere scholen
+originURL;BronCat;http://oai.tudelft.nl/wodc;Instituut
+originURL;BronCat;http://imis.nioz.nl/imis.php;Instituut
+originURL;BronCat;http://dare.uva.nl/cgi/arno/oai/aup;Overig
+originURL;BronCat;http://www.scp.nl/oai;Instituut
+originURL;BronCat;http://publications.beeldengeluid.nl/oai;Instituut
+originURL;BronCat;http://oai.tudelft.nl/philips;Overig
+originURL;BronCat;http://oai.tudelft.nl/ihe;Instituut
+originURL;BronCat;http://theoluniv.ub.rug.nl/cgi/oai2;Andere scholen
+originURL;BronCat;http://easy.dans.knaw.nl/oai;Instituut
+originURL;BronCat;https://dataverse.nl/oai;Universiteit
+originURL;BronCat;http://corpus1.mpi.nl/ds/oaiprovider/oai2;Instituut
+originURL;BronCat;http://library.wur.nl/php/oai.php;Universiteit
+originURL;BronCat;http://api.gbif.org/v1/oai-pmh/registry;Instituut
+originURL;BronCat;http://lisspanel.nl/oai/oai2.php;Instituut
+originURL;BronCat;http://oai-pmh.centerdata.nl/lissdata/oai2.php;Instituut
+originURL;BronCat;http://services.kb.nl/mdo/oai;Instituut
+originURL;BronCat;http://data.4tu.nl/oai;Universiteit
+originURL;BronCat;http://dhsdata.nl/oai/oai2.php;Instituut
