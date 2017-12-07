@@ -1,28 +1,22 @@
-library(readr)
-library(plyr)
-library(dplyr)
-library(lubridate)
-library(stringr)
-library(XML)
-library(rvest)
-library(oai)
-library(profvis)
-library(fastmatch)
-Sys.setenv(TZ='UTC')
-options(stringsAsFactors = T)
-
 # Restore from old state
-if(exists('Step')) StepBU <- Step
+if(exists('Step')) {
+  StepBU <- Step
+} else {
+  src <- getSrcDirectory(function(x) {x})
+  if(src!='') setwd(src)
+  rm(src)
+  source(paste0(getwd(), '/SetLocal.r'))
+  libinstandload('readr','plyr','dplyr','lubridate','stringr','XML','rvest','oai','profvis','fastmatch')
+  Sys.setenv(TZ='UTC')
+  options(stringsAsFactors = T)
+}
 if(!exists('SubStep')) {SubStep <- 'Start'}
 if(exists('Params') && !is.null(Params$LastPath) && Params$LastPath!=Paths$dumproot) stop('If path is changed, restart first!')
 if(exists('Params') && !is.null(Params$cla)) {
   Params <- list(cla=Params$cla, Resume=list())
 } else {
   Params <- list(Resume=list())
-  if(!exists('readCla')) {
-    source(paste0(Paths$Rcode,'/Help/ClasSchema.R'))
-  }
-  Params$cla=readCla()
+  Params$cla=readNARCIScla()
 }
 
 # General settings:
@@ -34,15 +28,15 @@ Params$reCalcIDs <- F # If true, summary is automatically produced as well
 Params$oldfdate <- as.POSIXct('2017-10-01', tz='UTC')
 Params$nfiles <- 50
 
-Paths$dumproot <- paste0(Paths$Dumps,'/Nov17-3')
+Paths$dumproot <- paste0(Paths$Dumps,'/Dec17-test')
 Paths$dcXML<- paste0(Paths$dumproot, '/dcXML')
 Paths$didlmodsXML <- paste0(Paths$dumproot, '/didlmodsXML')
-Paths$Parsed <- paste0(Paths$dumproot, '/ChunkTesting')
+Paths$Parsed <- paste0(Paths$dumproot, '/Chunk')
 Paths$IDdcXML <- paste0(Paths$dumproot, '/dcIDs')
 Paths$IDdidlmodsXML <- paste0(Paths$dumproot, '/didlIDs')
 
 # See what is available on disk
-RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Dumps,'InputForNew'),
+RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Dumps,'/InputForNew'),
                                        pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
 if(nrow(RDSfiles)==0) {
   print('No old files found, creating new empty df')
@@ -84,7 +78,7 @@ Params$tempvarnames <- c('endResTokens','i','j','l','lastfiles','lastResToken','
                          'colinnames','colsMand','RDSfiles','cols','Outdf','OutDel','x','CummTotals','namen','lengths','wrongrepl',
                          'CorrErrors','NonDel','OneDeldf','Recs','extraIDs','fIDs',
                          'extramatchlength','frommatch','matchlength','matchrange')
-Params$keepvarnames <- c('ReadForAnalysisFromTotal','Paths','Params','resdate','Errors','Step','SubStep')
+Params$keepvarnames <- c('ReadForAnalysisfromTotal','libinstandload','readNARCIScla','simple_rapply','Paths','Params','resdate','Errors','Step','SubStep')
 Params$Reclsnames <- c("responseDate","request","ListRecords")
 Params$dateform <- c('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%OSZ', '%Y-%m-%d') # Caution: for some purposes, only first format is tried
 Params$subdfs <- c('setSpec','GlobalIDs','ppl.creator','subject','subjectcode','format','source.meta','ppl.contributor',
@@ -440,7 +434,7 @@ if(Step=='ProcIDs') {
     SubStep <- 'IDsCompWithOld'
   }
   if(SubStep=='IDsCompWithOld') {
-    if(exists('oldIDs') && exists('newIDs') && exists('n')) {
+    if(exists('oldIDs') && exists('newIDs') && exists('n', where=.GlobalEnv, inherits=F)) {
       if(!any(oldIDs$thisHarv)) {
         Params$oldfdate <- as.POSIXct('1902-01-01', tz='UTC')
       }
@@ -459,10 +453,10 @@ if(Step=='ProcIDs') {
       names(oldIDs)[names(oldIDs)=='LastDCUpdate'] <- 'LastUpdate' # Backward compatibility
       names(oldIDs)[names(oldIDs)==Params$harv] <- 'thisHarv'
       if(is.null(oldIDs$thisHarv)) {
-        oldIDs$thisHarv <- F
-        oldIDs$LastUpdate <- as.POSIXct('1902-01-01', tz = 'UTC')
-        oldIDs$File <- NA
-        oldIDs$Filename <- NA
+        oldIDs$thisHarv[] <- F
+        oldIDs$LastUpdate <- as.POSIXct(rep('1902-01-01', times=nrow(oldIDs)), tz = 'UTC')
+        oldIDs$File[] <- NA
+        oldIDs$Filename[] <- NA
         Params$oldfdate <- as.POSIXct('1902-01-01', tz='UTC')
       }
       if(F) {
@@ -471,8 +465,8 @@ if(Step=='ProcIDs') {
       } # Kept for possible debuging dateformats
       oldIDs$inNew <- factor(x = ifelse(oldIDs$thisHarv, 'ToCheck', 'Never'), levels = c('Never','Deleted','Updated','Unchanged','Assumed','Disappeared','ToCheck','New'))  # Order is used when matching with oldIDs
       #if(Params$harv=='dc') {names(oldIDs)[names(oldIDs)=='LastDCUpdate'] <- 'LastUpdate'}
-      oldIDs$inNewNr <- NA
-      oldIDs$LastUpdate <- force_tz(oldIDs$LastUpdate, tz='UTC')
+      oldIDs$inNewNr[] <- NA
+      oldIDs$LastUpdate[] <- force_tz(oldIDs$LastUpdate, tz='UTC')
       oldIDs$inNewTs <- as.POSIXct(rep('1902-01-01', times=nrow(oldIDs)), tz='UTC')
       
       newIDs <- data.frame(ID=character(), del=logical(), ts=as.POSIXct(character(), tz='UTC'), file=numeric())
@@ -484,6 +478,11 @@ if(Step=='ProcIDs') {
       oldIDs$inNew[oldIDs$inNewNr>=Params$Resume$IDComp] <- 'ToCheck'
       oldIDs$inNewNr[oldIDs$inNewNr>=Params$Resume$IDComp] <- NA
       newIDs <- newIDs[newIDs$file<Params$Resume$IDComp,]
+    }
+    if(!any(oldIDs$thisHarv)) {
+      Params$oldfdate <- as.POSIXct('1902-01-01', tz='UTC')
+    } else {
+      Params$oldfdate <- min(Params$oldfdate, max(oldIDs$LastUpdate[oldIDs$thisHarv]))
     }
     tempCacheVals <- data.frame(idx=integer(10000), inNew=factor(character(10000),levels=levels(oldIDs$inNew)), inNewNr=integer(10000), inNewTs=as.POSIXct(rep('1902-01-01', times=10000), tz='UTC'))  
     tempCacheidx <- 0
@@ -517,35 +516,39 @@ if(Step=='ProcIDs') {
                                          format=Params$dateform[1], tz='UTC'),
                          file=n,
                          stringsAsFactors = F)
-      tempidx <- fmatch(fIDs$ID, oldIDs$ID)
-      tempcacheNewIDs <- rbind(tempcacheNewIDs, fIDs[is.na(tempidx),])
-      tempidx <- tempidx[!is.na(tempidx)]
-      temp <- oldIDs[tempidx,c('ID','LastUpdate','inNew')]
-      temp$idx <- tempidx
-      if (any((temp$inNew!='ToCheck' & !(temp$inNew=='Never' & temp$del)) | temp$idx %in% tempCacheVals$idx)) {
-        print(paste0('IDs used multiple times in file ',n,', (stored in Errors$MultiIDs), nrs:\n',
-                     paste(temp$idx[temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx], collapse=', ')))
-        Errors$MultiIDs <- rbind.fill(Errors$MultiIDs, temp[temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx,])
-        Errors$count <- Errors$count+sum(temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx)
-        #readline(prompt="Press any key to continue")
-        Sys.sleep(.2)
-      }
-      temp <- merge(temp, fIDs)
-      temp <- temp[order(temp$idx),]
-      if(any(temp$LastUpdate>temp$ts)) {
-        print("Error: oldIDs updated later than current harvest!")
-        stop()
-      }
-      temp$inNew[temp$LastUpdate<temp$ts] <- 'Updated'
-      temp$inNew[temp$LastUpdate==temp$ts & temp$inNew!='Never'] <- 'Unchanged'
-      temp$inNew[temp$del & temp$inNew!='Never'] <- 'Deleted'
-      if(nrow(temp)!=0) {
-        tempCacheidx <- (tempCacheidx+1):(tempCacheidx+nrow(temp))
-        tempCacheVals$idx[tempCacheidx] <- temp$idx
-        tempCacheVals$inNew[tempCacheidx] <- temp$inNew
-        tempCacheVals$inNewNr[tempCacheidx] <- n
-        tempCacheVals$inNewTs[tempCacheidx] <- temp$ts
-        tempCacheidx <- max(tempCacheidx)
+      if(nrow(oldIDs)>0) {
+        tempidx <- fmatch(fIDs$ID, oldIDs$ID)
+        tempcacheNewIDs <- rbind(tempcacheNewIDs, fIDs[is.na(tempidx),])
+        tempidx <- tempidx[!is.na(tempidx)]
+        temp <- oldIDs[tempidx,c('ID','LastUpdate','inNew')]
+        temp$idx <- tempidx
+        if (any((temp$inNew!='ToCheck' & !(temp$inNew=='Never' & temp$del)) | temp$idx %in% tempCacheVals$idx)) {
+          print(paste0('IDs used multiple times in file ',n,', (stored in Errors$MultiIDs), nrs:\n',
+                       paste(temp$idx[temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx], collapse=', ')))
+          Errors$MultiIDs <- rbind.fill(Errors$MultiIDs, temp[temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx,])
+          Errors$count <- Errors$count+sum(temp$inNew!='ToCheck'|temp$idx %in% tempCacheVals$idx)
+          #readline(prompt="Press any key to continue")
+          Sys.sleep(.2)
+        }
+        temp <- merge(temp, fIDs)
+        temp <- temp[order(temp$idx),]
+        if(any(temp$LastUpdate>temp$ts)) {
+          print("Error: oldIDs updated later than current harvest!")
+          stop()
+        }
+        temp$inNew[temp$LastUpdate<temp$ts] <- 'Updated'
+        temp$inNew[temp$LastUpdate==temp$ts & temp$inNew!='Never'] <- 'Unchanged'
+        temp$inNew[temp$del & temp$inNew!='Never'] <- 'Deleted'
+        if(nrow(temp)!=0) {
+          tempCacheidx <- (tempCacheidx+1):(tempCacheidx+nrow(temp))
+          tempCacheVals$idx[tempCacheidx] <- temp$idx
+          tempCacheVals$inNew[tempCacheidx] <- temp$inNew
+          tempCacheVals$inNewNr[tempCacheidx] <- n
+          tempCacheVals$inNewTs[tempCacheidx] <- temp$ts
+          tempCacheidx <- max(tempCacheidx)
+        }
+      } else {
+        tempcacheNewIDs <- rbind(tempcacheNewIDs, fIDs)
       }
     } # Fill oldIDs and newIDs with files from oldfdate
     tempCacheVals <- tempCacheVals[tempCacheVals$idx!=0,]
@@ -660,13 +663,18 @@ if(Step=='showIDsumm') {
   print('Showing ID-summary')
   newIDs$repo <- substr(newIDs$ID,1,regexpr(':',newIDs$ID))
   oldIDs$repo <- substr(oldIDs$ID,1,regexpr(':',oldIDs$ID))
-  cnt <- plyr::count(oldIDs, vars=c('dataset', 'repo','thisHarv','inNew'))
-  cnt$inNew[cnt$inNew=='Assumed'] <- 'Unchanged'
-  cnt <- plyr::count(cnt, vars=c('dataset', 'repo','thisHarv','inNew'), wt_var='freq')
-  cnt <- rbind.fill(cnt,data.frame(plyr::count(newIDs,vars='repo'),inNew='New'))
-  (cnt <- cnt[order(cnt$repo),])
+  if(nrow(oldIDs)>0) {
+    cnt <- plyr::count(oldIDs, vars=c('dataset', 'repo','thisHarv','inNew'))
+    cnt$inNew[cnt$inNew=='Assumed'] <- 'Unchanged'
+    cnt <- plyr::count(cnt, vars=c('dataset', 'repo','thisHarv','inNew'), wt_var='freq')
+    cnt <- rbind.fill(cnt,data.frame(plyr::count(newIDs,vars='repo'),inNew='New'))
+    (cnt <- cnt[order(cnt$repo),])
+  } else {
+    cnt <- data.frame(plyr::count(newIDs,vars='repo'),inNew='New')
+    cnt$dataset <- NA
+  }
   tstamps <- rbind(oldIDs[c('inNewTs','inNew')],data.frame(inNewTs=newIDs$ts, inNew=factor('New', levels=levels(oldIDs$inNew))))
-  library(ggplot2)
+  libinstandload(ggplot2)
   suppressWarnings({
     templimits <- c(as.POSIXct(min(newIDs$ts, 
                                    oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
@@ -676,15 +684,17 @@ if(Step=='showIDsumm') {
     print(ggplot(data=tstamps) +
             geom_histogram(aes(x=inNewTs, fill=inNew), breaks=as.numeric(c(templimits[1]+(0:tempbins*(templimits[2]-templimits[1])/tempbins)))) +
             scale_x_datetime(limits = templimits))
-    readline(prompt='Press any key to show next plot')
-    tempFirstTs <- min(oldIDs$LastUpdate[oldIDs$LastUpdate>as.POSIXct('1970-01-01')],
-                       as.POSIXct('2017-01-01'))
-    templimits <- c(as.POSIXct(tempFirstTs-years(1)-days(1)), Sys.time())
-    
-    print(ggplot(data=oldIDs) +
-            geom_histogram(aes(x=as.POSIXct(if_else(LastUpdate>tempFirstTs, LastUpdate, tempFirstTs-years(1))), fill=inNew), 
-                           breaks=as.numeric(c(templimits[1]+(0:tempbins*(templimits[2]-templimits[1])/tempbins)))) +
-            scale_x_datetime(limits = templimits))
+    if(nrow(oldIDs)>1) {
+      readline(prompt='Press any key to show next plot')
+      tempFirstTs <- min(oldIDs$LastUpdate[oldIDs$LastUpdate>as.POSIXct('1970-01-01')],
+                         as.POSIXct('2017-01-01'))
+      templimits <- c(as.POSIXct(tempFirstTs-years(1)-days(1)), Sys.time())
+      
+      print(ggplot(data=oldIDs) +
+              geom_histogram(aes(x=as.POSIXct(if_else(LastUpdate>tempFirstTs, LastUpdate, tempFirstTs-years(1))), fill=inNew), 
+                             breaks=as.numeric(c(templimits[1]+(0:tempbins*(templimits[2]-templimits[1])/tempbins)))) +
+              scale_x_datetime(limits = templimits))
+    }
   })
   print(paste('First new:',min(newIDs$ts)))
   print(paste('First changed old record:',min(oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))])))
@@ -726,20 +736,22 @@ if(Step=='harvnewRecs') {
   if (exists('lastResToken')&&nchar(lastResToken)>10) {
     if(Params$harv=='dc') {
       newRecords <- T
-      print('Resuming harvesting records')
+      print(paste0('Resuming harvesting records at ',Sys.time()))
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
-      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted')),' are deleted (smaller)'))
-      print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before'))
+      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
+      print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
+                   format(100*Params$filesize*nrow(newfiles)/nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New')), digits=3),'%)'))
       dump <- list_records(Params$urls$dcoaiurl, as='raw', token=lastResToken, dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$dcoaiurl)$setSpec))
       rm(dump)
       lastResToken <- 'Endfile'
     } else if (Params$harv=='didlmods') {
       newRecords <- T
-      print('Resuming harvesting records')
+      print(paste0('Resuming harvesting records at ',Sys.time()))
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
-      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted')),' are deleted (smaller)'))
-      print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before'))
+      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
+      print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
+                   format(100*Params$filesize*nrow(newfiles)/nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New')), digits=3),'%)'))
       dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', token=lastResToken, dumper=dump_raw_to_txt, 
                            dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$gmhoaiurl)$setSpec))
@@ -760,7 +772,7 @@ if(Step=='harvnewRecs') {
       newRecords <- T
       print('Starting harvesting records.')
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
-      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted')),' are deleted (smaller)'))
+      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       dump <- list_records(Params$urls$dcoaiurl, as='raw', from=resdate,
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$dcoaiurl)$setSpec))
@@ -770,7 +782,7 @@ if(Step=='harvnewRecs') {
       newRecords <- T
       print('Starting harvesting records.')
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
-      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted')),' are deleted (smaller)'))
+      print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=resdate,
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$gmhoaiurl)$setSpec))
@@ -977,7 +989,7 @@ if(Step=='SummariseRecords') {
       i <- regexpr(pattern = '<responseDate>.*?</responseDate>',text = substring(rawfile,1,1000))
       tempCacheRecs$ReqDelay[n] <- abs(difftime(tempCacheRecs$lastmod[n], 
                                                 as.POSIXct(substr(rawfile,i+14,i+33)
-                                                           , format=Params$dateform[1], tz='utc'), units = 'secs'))
+                                                           , format=Params$dateform[1], tz='UTC'), units = 'secs'))
       # Het verschil tussen de HTTP-request en het wegschrijven van het bestand. Rond de paar seconden, max 300.
       i <- regexpr('<request resumptionToken.*?verb',substring(rawfile,1,1000))
       tempCacheRecs$ReqResTok[n] <- substr(rawfile,i+26, i+attr(i,"match.length")-7)
@@ -1060,7 +1072,7 @@ if(Step=='SummariseRecords') {
     print("Not all Recfiles numbered well")
     stop()
   }
-  Errors$RecSumm$fileno <- Recfiles$nr[Errors$RecSumm$fileno]
+  Errors$RecSumm$fileno <- Recfiles$nr[Errors$RecSumm$fileno] # Deze stap is omdat in eerste instantie bij Errors van een andere volgorde werd uitgegaan
   Recfiles <- Recfiles[order(Recfiles$nr),]
   if (any(Recfiles$lastmod[1:(nrow(Recfiles)-1)]>Recfiles$lastmod[2:nrow(Recfiles)])) {
     print("Not in order!")
@@ -1070,7 +1082,7 @@ if(Step=='SummariseRecords') {
   if(ncol(Recfiles)==13) {
     Recfiles <- Recfiles[,c(13,3,1,2,4:12)]
   }
-  if(any(Recfiles$ReqDelay>60)) {
+  if(any(Recfiles$ReqDelay>60 | Recfiles$ReqDelay<(-2))) {
     Errors$count <- Errors$count+sum(Recfiles$ReqDelay>60)
     Errors$RecSumm <- rbind(Errors$RecSumm, data.frame(bad='Long ReqDelay',
                                                        idx='NA',
@@ -1320,9 +1332,13 @@ if(Step=='ParseRecords') {
             nldidl=I(lapply(Recs, function(x) {
               xmlToList(x[[2]][[1]][[1]][[1]][['Item']])
             })),
-            norm=I(lapply(Recs, function(x) {
-              xmlToList(x[[2]][[1]][[2]][[1]][['Item']])
-            })),
+            norm=I(simple_rapply(
+              lapply(Recs, function(x) {
+                xmlToList(x[[2]][[1]][[2]][[1]][['Item']])
+              }),
+              function(x) {
+                ifelse(is.null(x), NA, x)
+              })),
             about.origin=data.frame(do.call(rbind.fill,lapply(orig, function(x) {
               data.frame(lapply(xmlAttrs(x), unlist),stringsAsFactors = F)
             }))),
@@ -1382,6 +1398,9 @@ if(Step=='ParseRecords') {
           OneRecdf$Subject <- lapply(OneRecdf$norm, function(x) {
             x[['Item']][['Component']][['Resource']][['mods']][['subject']]
           })
+          # OneRecdf$Type <- lapply(OneRecdf$norm, function(x) { ----
+          #   x[['Item']][['Component']][['Resource']][['mods']][['genre']]
+          # })
           OneRecdf$filenr <- n
         } else {
           OneRecdf <- data.frame()
@@ -1439,13 +1458,13 @@ if(Step=='MergeRecords') {
   ParsRecfiles$name <- gsub('.*/','',ParsRecfiles$fullname)
   ParsRecfiles$lastmod <- file.mtime(ParsRecfiles$fullname)
   ParsRecfiles <- ParsRecfiles[order(ParsRecfiles$lastmod),]
-  ParsRecfiles$version <- (ParsRecfiles$lastmod > as.POSIXct('2017-12-30 10:30:00'))+1
+  ParsRecfiles$version <- (ParsRecfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
   
   ParsDelfiles <- data.frame(fullname=list.files(path=Paths$Parsed, pattern='^Deleted.*', recursive = T,full.names = T),stringsAsFactors = F)
   ParsDelfiles$name <- gsub('.*/','',ParsDelfiles$fullname)
   ParsDelfiles$lastmod <- file.mtime(ParsDelfiles$fullname)
   ParsDelfiles <- ParsDelfiles[order(ParsDelfiles$lastmod),]
-  ParsDelfiles$version <- (ParsDelfiles$lastmod > as.POSIXct('2017-12-30 10:30:00'))+1
+  ParsDelfiles$version <- (ParsDelfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
   
   fileborders <- str_extract(as.character(ParsRecfiles$name),'File\\s*[0-9]*')
   if(!all(fileborders==str_extract(as.character(ParsDelfiles$name),'File\\s*[0-9]*'))||
@@ -1563,13 +1582,13 @@ if(Step=='MergeRecords') {
         FirstID <- as.character(Deldf$identifier[1])
         LastID <- as.character(Deldf$identifier[nrow(Deldf)])
       } else {
-        FirstID <- as.POSIXct(Recdf$header.datestamp[1],format=Params$dateform[1])<as.POSIXct(Deldf$datestamp[1],format=Params$dateform[1])   #Stores if Recdf is firstID
+        FirstID <- as.POSIXct(Recdf$header.datestamp[1],format=Params$dateform[1], tz='UTC')<as.POSIXct(Deldf$datestamp[1],format=Params$dateform[1], tz='UTC')   #Stores if Recdf is firstID
         if(FirstID) {
           FirstID <- as.character(Recdf$header.identifier[1])
         } else {
           FirstID <- as.character(Deldf$identifier[1])
         }
-        LastID <- as.POSIXct(Recdf$header.datestamp[nrow(Recdf)],format=Params$dateform[1])<as.POSIXct(Deldf$datestamp[nrow(Deldf)],format=Params$dateform[1])   #Stores if Recdf is firstID
+        LastID <- as.POSIXct(Recdf$header.datestamp[nrow(Recdf)],format=Params$dateform[1],tz='UTC')<as.POSIXct(Deldf$datestamp[nrow(Deldf)],format=Params$dateform[1], tz='UTC')   #Stores if Recdf is firstID
         if(LastID) {
           LastID <- as.character(Recdf$header.identifier[nrow(Recdf)])
         } else {
@@ -1660,7 +1679,7 @@ if(Step=='MergeRecords') {
       }
       if ((nrow(Recdf)>0)&& !(n %in% Errors$skippedFiles)) {
         Outdf <- data.frame(ID=as.character(Recdf[,colinnames[1]]),stringsAsFactors = F)
-        Outdf$date.header <- as.POSIXct(Recdf[,colinnames[2]], format=Params$dateform[1])
+        Outdf$date.header <- as.POSIXct(Recdf[,colinnames[2]], format=Params$dateform[1], tz='UTC')
         if(any(is.na(Outdf$date.header))) {
           Outdf$date.header[is.na(Outdf$date.header)] <-
             as.POSIXct(Recdf[is.na(Outdf$date.header),colinnames[2]], format=Params$dateform[1], tz = 'UTC')-7200 # Vanwege problemen met zomer/winterijd
@@ -1671,7 +1690,7 @@ if(Step=='MergeRecords') {
               as.POSIXct(Recdf[is.na(Outdf$date.header),colinnames[2]], format=i, tz = 'UTC')-7200
           }
         }
-        Outdf$date.harv <- as.POSIXct(Recdf[,colinnames[3]], format=Params$dateform[1])
+        Outdf$date.harv <- as.POSIXct(Recdf[,colinnames[3]], format=Params$dateform[1], tz='UTC')
         if(any(is.na(Outdf$date.harv))) {                     
           Outdf$date.harv[is.na(Outdf$date.harv)] <-
             as.POSIXct(Recdf[is.na(Outdf$date.harv),colinnames[3]], format=Params$dateform[1], tz = 'UTC')-7200 # Vanwege problemen met switch bij winter/zomertijd
@@ -1728,7 +1747,7 @@ if(Step=='MergeRecords') {
         MetaOut$origin <- rbind.fill(MetaOut$origin, unique(data.frame(baseURL=Recdf[,grep(colinnames[11],colnames(Recdf))],
                                                                        NameSp=Recdf[,grep(colinnames[12],colnames(Recdf))],
                                                                        Schema=Recdf[,grep(colinnames[13],colnames(Recdf))])))
-        Outdf$date.orig <- as.POSIXct(Recdf[,colinnames[14]], format=Params$dateform[1])
+        Outdf$date.orig <- as.POSIXct(Recdf[,colinnames[14]], format=Params$dateform[1], tz='UTC')
         if(any(is.na(Outdf$date.orig))) {
           Outdf$date.orig[is.na(Outdf$date.orig)] <-
             as.POSIXct(Recdf[is.na(Outdf$date.orig),colinnames[14]], format=Params$dateform[1], tz = 'UTC')-7200
@@ -1992,14 +2011,14 @@ if(Step=='FinalizeMerge') {
     } else {
       OldTotal$NewStatus <- oldIDs$inNew[oldIDs$thisHarv]
       #saveRDS(OldTotal, paste0(substr(Paths$OldTotal,1,nchar(Paths$OldTotal)-4),'_oldcopy.rds'))
-      OldTotal <- OldTotal[oldIDs$inNew[oldIDs$thisHarv] %in% c('Assumed','Unchanged'),]
+      OldTotal <- OldTotal[oldIDs$inNew[oldIDs$thisHarv] %in% c('Assumed','Unchanged'),,drop=F]
       Total_Kept <- OldTotal
       rm(OldTotal)
     }
     print('Loading Total finished')
   }
-  Total_Kept <- Total_Kept[!Total_Kept$ID %in% Total_New$ID,]
-  Total_Kept$filenr <- NA # These are now invalid. FileNAMES can be kept
+  Total_Kept <- Total_Kept[!Total_Kept$ID %in% Total_New$ID,,drop=F]
+  if(nrow(Total_Kept)>0) Total_Kept$filenr <- NA # These are now invalid. FileNAMES can be kept
   NewTotal <- rbind.fill(Total_New[sapply(Total_New, class)!='data.frame'], Total_Kept[sapply(Total_Kept, class)!='data.frame' &
                                                                                          !names(Total_Kept) %in% c('errors','NewStatus')])
   print('And combination succesfull, now filling subframes')
@@ -2080,16 +2099,18 @@ if(Step=='MakeIDfile') {
                            Filename=as.factor(NA))
     IDs <- rbind.fill(IDs, extraIDs)
   }
-  
   if(is.null(oldIDs$thisHarv)) {oldIDs$thisHarv <- F}
   names(oldIDs)[names(oldIDs)==Params$harv] <- 'thisHarv'
   names(oldIDs) <- sub(paste0('^',Params$harv), '', names(oldIDs), ignore.case = T)
   names(newIDs) <- c('ID','del','inNewTs','inNewNr')
   newIDs$inNew <- factor(ifelse(newIDs$del, 'Deleted','New'))
+  if(nrow(oldIDs)==0) {
+    oldIDs$dataset <- rep(NA,0)
+    oldIDs$originURL <- rep(NA,0)
+  }
   oldIDs <- rbind.fill(oldIDs, newIDs[c('ID','inNew','inNewNr','inNewTs')])
   IDs <- merge(IDs, oldIDs[names(oldIDs)!='nr'], by='ID', all=T, suffixes = c('.NewT','.old'))
   print('Data.frame made, now filling values:')
-  
   print('dataset (T/F)')
   if(any(IDs$dataset.NewT!=IDs$dataset.old, na.rm=T)) {
     stop('Error in making IDS, after merge: IDs have datasets T and F at same time')
@@ -2141,7 +2162,7 @@ if(Step=='MakeIDfile') {
   levels(IDs$originURL.NewT)[levels(IDs$originURL.NewT)=='http://pure.knaw.nl/ws/oai'] <- 'https://pure.knaw.nl/ws/oai'
   #levels(IDs$originURL)[levels(IDs$originURL=='http://pure.knaw.nl/ws/oai')] <- 'https://pure.knaw.nl/ws/oai'
   IDs$originURL.NewT <- droplevels(IDs$originURL.NewT)
-  IDs$originURL.old <- droplevels(IDs$originURL.old)
+  IDs$originURL.old <- droplevels(as.factor(IDs$originURL.old))
   IDs$originURL <- factor(NA, levels=unique(c(levels(IDs$originURL.old), levels(IDs$originURL.NewT))))
   IDs$originURL.old <- factor(IDs$originURL.old, levels=unique(c(levels(IDs$originURL.old), levels(IDs$originURL.NewT))))
   IDs$originURL.NewT <- factor(IDs$originURL.NewT, levels=unique(c(levels(IDs$originURL.old), levels(IDs$originURL.NewT))))
@@ -2170,10 +2191,10 @@ if(Step=='MakeIDfile') {
   if(any(IDs$LastUpdate.old>IDs$inNewTs, IDs$inNewTs>IDs$LastUpdate.NewT, na.rm=T)) {
     stop('Conflicting timestamps (2)')
   }
-  if(any(IDs$inNew %in% c('Deleted','Updated') & IDs$LastUpdate.old==IDs$LastUpdate.NewT)) {
-    stop('Conflicting timestamps (3)')
+  if(any(IDs$inNew %in% c('Deleted','Updated') & !is.na(IDs$LastUpdate.old) & IDs$LastUpdate.old==IDs$LastUpdate.NewT)) {
+    stop('Conflicting timestamps (4)')
   } # Check if newer record is harvested
-  if(any(IDs$inNew %in% c('Deleted','Updated','New') & IDs$LastUpdate<as.POSIXct(resdate))) {
+  if(!is.null(resdate) && any(IDs$inNew %in% c('Deleted','Updated','New') & IDs$LastUpdate<as.POSIXct(resdate))) {
     stop('Error in making IDs: Record was modified, but LastUpdate before resdate')
   }
   if(any(IDs$originURL!=IDs$originURL.old, IDs$originURL!=IDs$originURL.NewT, na.rm = TRUE)) {

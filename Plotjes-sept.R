@@ -1,5 +1,5 @@
 source(paste0(getSrcDirectory(function(x) {x}), '/SetLocal.r'))
-libinstandload('plyr','lubridate','ggplot2','plotly','scales','tidyr','reshape2','RColorBrewer','googleVis','readr')
+libinstandload('plyr','lubridate','ggplot2','plotly','scales','tidyr','reshape2','RColorBrewer','googleVis','readr','extrafont')
 options(OutDec = '.') # Put here for consistency. Should be overriden later, but not setting here led to initialization issues
 ColContrast <- function(bg, contrast='BW30') {
   if(nchar(bg)!=7 || substr(bg,1,1)!='#') {
@@ -29,7 +29,7 @@ if(!exists('TotalVals')) {
   TotalVals <- ReadForAnalysisfromTotal(Summarize = 'Both')
 }
 
-multiPlot <- list(14)
+multiPlot <- list(7, 2, 22, 14)
 
 for (StandardPlot in multiPlot) {
   PP <- list()
@@ -47,8 +47,10 @@ for (StandardPlot in multiPlot) {
   
   PP$Zoomfactor <- .5
   PP$SavePlot <- T
+  PP$PrintPlot <- F
   PP$SaveGglPlotStd <- T
-  PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,12,14)
+  PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
+  PP$GglPlotGlobLinks <- F
   
   if(0 %in% StandardPlot) {
     plotData <- plotData[plotData$set.publication|plotData$set.dataset,]
@@ -243,11 +245,14 @@ for (StandardPlot in multiPlot) {
     plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)'),]
     plotData <- plotData[!plotData$Type %in% c('Bachelor Thesis', 'Master Thesis'),]
     
-    temp <- read.csv2(paste0(Paths$Params,'/TypeCats.csv'))
+    temp <- read.csv2(paste0(Paths$Params,'/TypeCats.csv'), stringsAsFactors = F)
     #temp$count <- sapply(temp$Orig, function(i) {sum(TotalVals$freq[as.character(TotalVals$Type)==as.character(i)], na.rm=T)})
     #temp$count[temp$Orig=='Unknown'] <- sum(TotalVals$freq[is.na(TotalVals$Type)])
     #write.csv2(temp, paste0(Paths$Params,'/TypeCats.csv'))
     temp <- temp[temp$Version=='TypeCat1',2:4]
+    plotData$Type <- droplevels(plotData$Type)
+    temp <- temp[temp$Orig %in% levels(plotData$Type),]
+    temp$Orig <- factor(temp$Orig)
     plotData$TypeCat <- sapply(plotData$Type, function(i) {temp$Cat[temp$Orig==i]})
     rm(temp)
     
@@ -282,7 +287,6 @@ for (StandardPlot in multiPlot) {
     #                      Paper=c('Article', 'Working Paper','Preprint'),
     #                      Print=c('Book','Book part', 'Book Review','Review', 'Technical Documentation','Contribution to periodical','Doctoral Thesis'),
     #                      Rest=c('Lecture','Report', 'Annotation','Other','Unknown','Patent'))
-    
   } # NR 1: Access per Type
   if(11 %in% StandardPlot) {
     #Selectie
@@ -801,7 +805,7 @@ for (StandardPlot in multiPlot) {
     PP$plotType <- 'ColorCheck'
   } # ColorCheck
   
-  if (!is.null(Jaren)) {
+  if (exists('Jaren') && !is.null(Jaren)) {
     plotData$Jaar[plotData$Jaar<Jaren[1]] <- Jaren[1]-1
     plotData$Jaar[plotData$Jaar>Jaren[2]] <- Jaren[2]+1
     plotData$Jaar[is.na(plotData$Jaar)] <- Jaren[2]+2
@@ -1168,7 +1172,6 @@ for (StandardPlot in multiPlot) {
     if(is.null(PP$xvallabs)) {
       PP$xvallabs <- plotPercVals$x
     }
-    
     if(PP$LegDynamicHeight) {
       PP$LegHeight <- list(fill=PP$Zoomfactor*sapply(gregexpr('\\n',PP$LegLblFill), function(n) {sum(n!=-1)+1}),
                            rest=PP$Zoomfactor*sapply(gregexpr('\\n',PP$LegLbl), function(n) {sum(n!=-1)+1}))
@@ -1227,12 +1230,12 @@ for (StandardPlot in multiPlot) {
         geom_line(data=plotValsSec, aes(x=xpos, y=freq, group=whichline, linetype=PP$LegLblLinetype[as.numeric(whichline)], color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=PP$Zoomfactor) +
         geom_point(data=plotValsSec, aes(x=xpos, y=freq, alpha=whichline, color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=2*PP$Zoomfactor) +
         scale_linetype(labels=PP$LegLblLinetype) +
-        scale_alpha_manual(values=rep(1,nlevels(plotValsSec$whichline)), breaks=levels(plotValsSec$whichline), labels=rep(PP$LegLblAlpha),nlevels(plotValsSec$whichline)) +
-        scale_color_identity(breaks=PP$extrakleuren$VSNULine, labels=PP$LegLblLineColor, guide='legend') +
+        scale_alpha_manual(values=rep(1,nlevels(plotValsSec$whichline)), breaks=levels(plotValsSec$whichline), labels=PP$LegLblAlpha) +
+        scale_color_identity(breaks=PP$extrakleuren$VSNULine, labels=PP$LegLblAlpha, guide='legend') +
         guides(shape='none', 
                linetype='none',
                alpha=guide_legend(title=unlist(PP['LegTitleAlpha'][[1]]), order=2),
-               color=guide_legend(title=unlist(PP['LegTitleColor'][[1]]), order=2))
+               color=guide_legend(title=unlist(PP['LegTitleCol'][[1]]), order=2))
       if(length(unique(PP$LegLblLinetype))>1) {
         plotRes <- plotRes +
           guides(linetype=guide_legend(title=unlist(PP['LegTitleLineType'][[1]]), order=2))
@@ -1577,7 +1580,7 @@ for (StandardPlot in multiPlot) {
     #plotRes <- grid.arrange(plotResGrid)
     
   }
-  print(plotRes)
+  if(PP$PrintPlot) print(plotRes)
   if(PP$SavePlot) {
     ggsave(paste0(Paths$plots, '/',PP$FileTitle,'.png'),
            plot=plotRes, device='png', width=PP$SaveResolution[1]/PP$Savedpi, height=PP$SaveResolution[2]/PP$Savedpi, dpi=PP$Savedpi, bg='transparent')
@@ -1714,6 +1717,53 @@ for (StandardPlot in multiPlot) {
       
       arraytxt <- paste0('[[',paste0('\'', names(gglfrm), '\'',collapse=', '),'], ',
                          paste0(apply(gglfrm,1,function(x) {paste0('[\'',x[1],'\'',paste0(', ',x[2:5], collapse=''),']')}), collapse=', '),']')
+      (textR <- with(temp, paste0(pre,n,pre2,n,pre3,n,pre4, arraytxt, post1, n, post2)))
+      textBodyR <- paste0('<br><br><br>\n',
+                          '<h2 class="style01" style="margin-left:100px; width: 700px;">',temp$header,'</h2>\n',
+                          '<div id="barchart_div_',temp$n,'" style="width: 700px; height: 300px;"></div>\n',
+                          '<p style="margin-left:110px; width: 550px;"><label>',temp$graphtext,'</label></p>')
+      
+    }
+    if(22 %in% StandardPlot) {
+      googleVals <- spread(plotVals[1:3], col, freq)
+      googleVals <- merge(googleVals, spread(plotValsSec[c(1,3,4)], whichline, freq))
+      googleVals[sapply(googleVals, is.numeric)] <- round(googleVals[sapply(googleVals, is.numeric)])
+      
+      google <- gvisComboChart(googleVals, 'x', yvar=names(googleVals)[-1],
+                               option=list(seriesType='bars', series="{3: {type: 'line'}, 2: {type:'line'}, 4: {type:'line'}}"))
+      gglfrm <- data.frame(sapply(googleVals, function(x) {
+        x <- as.character(x)
+        x[is.na(x)] <- 'null'
+        return(x)
+      }), stringsAsFactors = F)
+      names(gglfrm)[1] <- 'Access'
+      names(gglfrm)[4] <- 'Total - VSNU'
+      names(gglfrm)[5] <- 'Estimate of articles - based on VSNU'
+      names(gglfrm)[6] <- 'KUOZ (VSNU): No of articles'
+      
+      gglfrm <- gglfrm[c('Access','Open','Closed','Total - VSNU', 'Estimate of articles - based on VSNU','KUOZ (VSNU): No of articles')]
+      
+      
+      temp <- list(pre='<script type="text/javascript" id="barchartscript',
+                   pre2='">\n/*<![CDATA[*/\ngoogle.setOnLoadCallback(drawChart',
+                   pre3=');\nfunction drawChart',
+                   pre4='() {var barchart_data = google.visualization.arrayToDataTable(',
+                   n=6,
+                   post1=');var chart = new google.visualization.ComboChart(document.getElementById(\'barchart_div_',
+                   post2=paste0('\' ));chart.draw(barchart_data, {isStacked: true, ',
+                                'colors:[\'#248bb8\',\'#949294\',\'#B02020\',\'#18A018\',\'#2020C0\'],',
+                                'seriesType: \'bars\', ',
+                                'series: {2: {type:\'line\'}, ',
+                                '3: {type:\'line\'}, ',
+                                '4: {type:\'line\'}}, ',
+                                'pointSize: 4, ',
+                                'chartArea: {left: 105, top: 60, width: ',463,', height: \'61.8%\'}',
+                                '});}\n/*]]>*/\n</script>'),
+                   header=GglLabels$header[GglLabels$Plotnr %in% StandardPlot],
+                   graphtext=GglLabels$Tekst[GglLabels$Plotnr %in% StandardPlot])
+      
+      arraytxt <- paste0('[[',paste0('\'', names(gglfrm), '\'',collapse=', '),'], ',
+                         paste0(apply(gglfrm,1,function(x) {paste0('[\'',x[1],'\'',paste0(', ',x[2:6], collapse=''),']')}), collapse=', '),']')
       (textR <- with(temp, paste0(pre,n,pre2,n,pre3,n,pre4, arraytxt, post1, n, post2)))
       textBodyR <- paste0('<br><br><br>\n',
                           '<h2 class="style01" style="margin-left:100px; width: 700px;">',temp$header,'</h2>\n',
@@ -1868,6 +1918,9 @@ for (StandardPlot in multiPlot) {
                          GglLabels$Tekst[GglLabels$Plotnr==99],
                          '</label>',
                          substr(htmlfile,inspos[1]+inspos[2],nchar(htmlfile)))
+      if(PP$GglPlotGlobLinks) {
+        htmlfile <- gsub('href="/','href="http://www.narcis.nl/', htmlfile)
+      }
       write_file(htmlfile,
                  path=paste0(Paths$output,'/GoogleChartsCode.htm')) # Meant to be same file as with Paths$input
     }
@@ -1880,6 +1933,24 @@ for (StandardPlot in multiPlot) {
   
   
   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

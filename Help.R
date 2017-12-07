@@ -1,6 +1,6 @@
 # Collection of functions, useful for NARCIS-analysis
 libinstandload <- function(..., order=F, quiet=T) {
-  packages <- as.vector(list(...))
+  packages <- unlist(as.vector(unlist(list(...))))
   if('extrafont' %in% packages && !'package:extrafont' %in% search()) loadfonts <- T else loadfonts <- F
   if(!all(sapply(packages, function(x) {class(x)=='character' && length(x)==1}))) {
     stop('Error in libinstandload: ... must be a list or vector of character, without nesting')
@@ -12,7 +12,7 @@ libinstandload <- function(..., order=F, quiet=T) {
       install <- !sapply(packages, require, character.only=T)
     }
     if(any(install)) {
-      install.packages(packages[install])
+      install.packages(unlist(packages[install]))
       sapply(packages[install], library, character.only=T)
       if('extrafont' %in% install) {
         font_import()
@@ -132,17 +132,26 @@ ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', ForceRelo
 readNARCIScla <- function(FilePath=paste0(Paths$Params,'/classification_en.pdf')) {
   libinstandload('pdftools')
   cl <- pdf_text(FilePath)
+  cl <- substr(cl, 1, nchar(cl)-4) # Removing pagenumbers
   cl <- paste(cl, collapse = ' ')
   cla <- data.frame(start=unlist(gregexpr('(D|E)[0-9]{5}',cl)))
   cla$stop <- c(cla$start[-1]-1,nchar(cl))
   cla <- apply(cla, 1, function(x) {substr(cl, x['start'], x['stop'])})
   cla <- data.frame(code=substr(cla,1,6), descr=gsub('[[:space:]\r\n]+',' ',substr(cla,7,500)),stringsAsFactors = F)
   cla$descr <- gsub('(^ )|( $)','',cla$descr)
-  
+  cla$descr <- gsub('[^A-Za-z0-9, \\(\\)]+','-', cla$descr) # Non-ASCII causing trouble
   cla$PartOf <- gsub('(D|E)([1-9]*)[1-9](0*)','\\1\\20\\3',cla$code)
   cla$PartOf[grepl('(D|E)0+$',cla$PartOf)] <- NA
   cla$lvl <- sapply(cla$code,function(x) {length(gregexpr('[1-9]',x)[[1]])})
   return(cla)
+}
+simple_rapply <- function(x, fn) {
+  if(is.list(x))
+  {
+    lapply(x, simple_rapply, fn)
+  } else {
+    fn(x)
+  }
 }
 
 
