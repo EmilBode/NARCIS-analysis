@@ -1,23 +1,23 @@
-Version;Orig;Cat;count
-TypeCat1;Article;Article;730609
-TypeCat1;Conference item;Rest;82
-TypeCat1;Conference Object;Rest;16022
-TypeCat1;Conference Paper;Rest;52754
-TypeCat1;Conference Proceedings;Rest;231
-TypeCat1;Bachelor Thesis;Removed;3
-TypeCat1;Master Thesis;Removed;116
-TypeCat1;Book;Book (part);51984
-TypeCat1;Book part;Book (part);131978
-TypeCat1;Book Review;Rest;15550
-TypeCat1;Contribution to periodical;Book (part);36437
-TypeCat1;Doctoral Thesis;Doctoral Thesis;82989
-TypeCat1;Lecture;Rest;9098
-TypeCat1;Other;Rest;78666
-TypeCat1;Patent;Rest;2378
-TypeCat1;Preprint;Rest;1541
-TypeCat1;Report;Rest;110337
-TypeCat1;Review;Rest;1159
-TypeCat1;Technical Documentation;Rest;820
-TypeCat1;Unknown;Rest;162109
-TypeCat1;Working Paper;Rest;15273
-TypeCat1;Annotation;Rest;14681
+Version;Orig;Cat;count;Lang
+TypeCat1;Article;Article;730609;en
+TypeCat1;Conference item;Rest;82;en
+TypeCat1;Conference Object;Rest;16022;en
+TypeCat1;Conference Paper;Rest;52754;en
+TypeCat1;Conference Proceedings;Rest;231;en
+TypeCat1;Bachelor Thesis;Removed;3;en
+TypeCat1;Master Thesis;Removed;116;en
+TypeCat1;Book;Book (part);51984;en
+TypeCat1;Book part;Book (part);131978;en
+TypeCat1;Book Review;Rest;15550;en
+TypeCat1;Contribution to periodical;Book (part);36437;en
+TypeCat1;Doctoral Thesis;Doctoral Thesis;82989;en
+TypeCat1;Lecture;Rest;9098;en
+TypeCat1;Other;Rest;78666;en
+TypeCat1;Patent;Rest;2378;en
+TypeCat1;Preprint;Rest;1541;en
+TypeCat1;Report;Rest;110337;en
+TypeCat1;Review;Rest;1159;en
+TypeCat1;Technical Documentation;Rest;820;en
+TypeCat1;Unknown;Rest;162109;en
+TypeCat1;Working Paper;Rest;15273;en
+TypeCat1;Annotation;Rest;14681;en

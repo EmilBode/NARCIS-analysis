@@ -61,7 +61,7 @@ ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', ForceRelo
   
   if(FilePath=='Auto') {
     RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Dumps,'/Werkset'),
-                                           pattern='.*Total.*\\.rds)', full.name=T, ignore.case=T), stringsAsFactors = F)
+                                           pattern='.*Total.*\\.rds', full.name=T, ignore.case=T), stringsAsFactors = F)
     RDSfiles$time <- file.mtime(RDSfiles$name)
     RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
     FilePath <- RDSfiles$name[grepl('Total',RDSfiles$name)][1]
@@ -71,7 +71,7 @@ ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', ForceRelo
   }
   if(!exists('Total')||ForceReload||is.null(Paths$WerksetTotal)||Paths$WerksetTotal!=FilePath) {
     if(!silent) print('Reading rds-file, which might take a while')
-    Paths$WerksetTotal <- NA
+    Paths$WerksetTotal <<- NA
     Total <- readRDS(FilePath)
     if(!silent && !(is.null(DropCols) && is.null(KeepCols) && is.null(KeepSets) && is.null(KeepMulti))) print('Loading finished, now subsetting...')
   }
@@ -101,12 +101,12 @@ ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', ForceRelo
   if(!is.na(tz)) {
     Sys.setenv(TZ=tz)
   }
-  Paths$WerksetTotal <- FilePath
   if (Summarize==FALSE) {
     assign('Total', Total, pos=.GlobalEnv)
     if(!silent) {
       print('Reading Total completed')
     }
+    Paths$WerksetTotal <<- FilePath
     return(0)
   } else {
     levels(Total$access) <- c(levels(Total$access),'Other')
@@ -119,7 +119,7 @@ ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', ForceRelo
                                    Type=Total$Type,
                                    lang=Total$language,
                                    set=Total$setSpec))
-    Paths$WerksetTotal <- FilePath
+    Paths$WerksetTotal <<- FilePath
     if(Summarize!='Only') {
       assign('Total', Total, pos=.GlobalEnv)
     }
@@ -148,12 +148,74 @@ readNARCIScla <- function(FilePath=paste0(Paths$Params,'/classification_en.pdf')
 simple_rapply <- function(x, fn) {
   if(is.list(x))
   {
-    lapply(x, simple_rapply, fn)
+    lapply(x, simple_rapply, fn) # Don't sapply this, return value must be consistent (thus list)
   } else {
     fn(x)
   }
 }
-
+nestednames <- function(lobj, unlist=T) {
+  if(!unlist) {
+    c(list(names(lobj)), lapply(lobj, function(x) {if(is.list(x)) nestednames(x, unlist=F) else names(x)}))
+  } else {
+    c(names(lobj), unlist(sapply(lobj, function(x) {if(is.list(x)) nestednames(x, unlist=T) else names(x)}), use.names = F))
+  }
+}
+setnestednames <- function(lobj, names, unlisted=T, skipNULL=T, noSet=NA, NULLSet='NULL', retcount=F) {
+  if(length(lobj)==0) {
+    ret <- list(0,lobj)
+  } else {
+    if(!is.list(lobj)) {
+      if(skipNULL) {
+        l <- length(names(lobj))
+      } else {
+        l <- length(lobj)
+      }
+      if(l!=0) names(lobj) <- names[1:l]
+      ret <- list(l,lobj)
+    } else {
+      if(!unlisted) {
+        # retcount is ignored, assumed to always be false
+        names(lobj) <- names[[1]]
+        if(length(names)>1) {
+          return(mapply(setnestednames, lobj, names[-1], MoreArgs = list(unlisted, skipNULL, noSet, NULLSet), SIMPLIFY = F))
+        } else {
+          return(lobj)
+        }
+      } else {
+        if(skipNULL) {
+          l <- length(names(lobj))
+        } else {
+          l <- length(lobj)
+        }
+        if(l!=0) names(lobj) <- names[1:l]
+        for(i in 1:length(lobj)) {
+          if(l<length(names)) {
+            res <- setnestednames(lobj[[i]], names[l+1:length(names)], unlisted, skipNULL, noSet, retcount=T)
+          } else {
+            res <- list(0, lobj[[i]])
+          }
+          lobj[[i]] <- res[[2]]
+          l <- l+res[[1]]
+        }
+        ret <- list(l, lobj)
+      }
+    }
+    if(retcount) {
+      return(ret)
+    } else {
+      return(ret[[2]])
+    }
+  }
+  
+}
+adjustnestednames <- function(lobj, fn, ...) {
+  if(!is.null(names(lobj))) names(lobj) <- fn(names(lobj), ...)
+  if(is.list(lobj)) {
+    return(lapply(lobj, adjustnestednames, fn, ...))
+  } else {
+    return(lobj)
+  }
+}
 
 
 

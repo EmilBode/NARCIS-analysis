@@ -28,10 +28,14 @@ ColContrast <- function(bg, contrast='BW30') {
 if(!exists('TotalVals')) {
   TotalVals <- ReadForAnalysisfromTotal(Summarize = 'Both')
 }
+part <- 1
+multiPlot <- lapply(rep(c(34, 7, 2, 22, 14), times=4), function(x) {x})[part]
+multiPlotParams <- list(GglPlotGlobLinks=rep(c(T,T,F,F),each=4)[part],
+                        LabelsLang=rep(c('nl','en','en','nl'), each=4)[part])
 
-multiPlot <- list(7, 2, 22, 14)
 
-for (StandardPlot in multiPlot) {
+for (ng in 1:length(multiPlot)) {
+  StandardPlot <- multiPlot[[ng]]
   PP <- list()
   if(exists('Jaren')) {rm(Jaren)}
   plotData <- TotalVals
@@ -46,12 +50,20 @@ for (StandardPlot in multiPlot) {
   names(VSNU) <- c('Categorie','Bron','Jaar','freq')
   
   PP$Zoomfactor <- .5
-  PP$SavePlot <- T
-  PP$PrintPlot <- F
+  PP$SavePlot <- F
+  PP$PrintPlot <- T
   PP$SaveGglPlotStd <- T
   PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
   PP$GglPlotGlobLinks <- F
-  
+  PP$LabelsLang <- 'en'
+  if(exists('multiPlotParams')) {
+    for(par in names(multiPlotParams)) {
+      PP[par] <- multiPlotParams[[par]][ng]
+    }
+  }
+  PP$GglPlotFileName <- paste0('GoogleChartsCode',
+                               ifelse(PP$GglPlotGlobLinks, ' for local viewing ',' for website '),
+                               PP$LabelsLang,'.htm')
   if(0 %in% StandardPlot) {
     plotData <- plotData[plotData$set.publication|plotData$set.dataset,]
     plotData <- plotData[c(1:(ncol(plotData)-11),ncol(plotData))]
@@ -102,19 +114,26 @@ for (StandardPlot in multiPlot) {
     
     #Plotparameters
     PP$plotX <- 'Jaar'
-    PP$xlab <- 'Year of publication'
-    PP$ylab <- 'Number of PhD dissertations'
     PP$XOrder <- '-'
     PP$plotCol <- 'Access'
     PP$ColOrder <- c('Closed', 'Open')
     PP$kleuren <- 'FromFile'
-    PP$Titel <- 'Open access of PhD dissertations'
     PP$SecLine <- list(What='VSNUTotals', Theses=c('Thesis'))
     PP$LegTitle <- '' #Bewust lege regel, lijnt mooier uit
-    PP$LegLblLinetype <- 'Total\naccording\nto VSNU'
-    PP$LegLblAlpha <- PP$LegLblLinetype
     PP$extrakleuren <- list(VSNULine='#D02020')
     
+    if(PP$LabelsLang=='en') {
+      PP$xlab <- 'Year of publication'
+      PP$ylab <- 'Number of PhD dissertations'
+      PP$Titel <- 'Open access of PhD dissertations'
+      PP$LegLblLinetype <- 'Total\naccording\nto VSNU'
+    } else {
+      PP$xlab <- 'Jaar van publicatie'
+      PP$ylab <- 'Aantal proefschriften'
+      PP$Titel <- 'Open access voor PhD proefschriften'
+      PP$LegLblLinetype <- 'Totaal\nvolgens\nde VSNU'
+    }
+    PP$LegLblAlpha <- PP$LegLblLinetype
   } # NR 2: Open Access voor theses
   if(3 %in% StandardPlot) {
     #Selectie
@@ -244,7 +263,7 @@ for (StandardPlot in multiPlot) {
     Jaren <- c(2000,2017,F)
     plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)'),]
     plotData <- plotData[!plotData$Type %in% c('Bachelor Thesis', 'Master Thesis'),]
-    
+  
     temp <- read.csv2(paste0(Paths$Params,'/TypeCats.csv'), stringsAsFactors = F)
     #temp$count <- sapply(temp$Orig, function(i) {sum(TotalVals$freq[as.character(TotalVals$Type)==as.character(i)], na.rm=T)})
     #temp$count[temp$Orig=='Unknown'] <- sum(TotalVals$freq[is.na(TotalVals$Type)])
@@ -265,19 +284,26 @@ for (StandardPlot in multiPlot) {
     PP$plotCol <- 'Access'
     PP$BarPosit <- 'fill'
     PP$BarWidth <- 'root1'
-    PP$FileTitle <- 'Open access for different scholarly publication types (linear width)'
+    PP$FileTitle <- paste0('Open access for different scholarly publication types (linear width) (',PP$LabelsLang,')')
     PP$BarGap <- .1
     PP$XOrder <- 'ValProp'
-    PP$XOrder <- c('Article','Book (part)','Doctoral Thesis','Rest')
-    PP$xvallabs <- c('All','Articles','Book (chapter)','PhD dissertations','Other types')
+    if(PP$LabelsLang=='en') {
+      PP$Titel <- 'Open access for different scholarly publication types'
+      PP$LegLbl <- c('Closed\naccess','Open\naccess')
+      PP$XOrder <- c('Article','Book (part)','Doctoral Thesis','Rest')
+      PP$xvallabs <- c('All','Articles','Book (chapter)','PhD dissertations','Other types')
+    } else {
+      PP$Titel <- 'Open access voor verschillende publicatietypen'
+      PP$LegLbl <- c('Closed\naccess','Open\naccess')
+      PP$XOrder <- c('Article','Book (part)','Doctoral Thesis','Rest')
+      PP$xvallabs <- c('Alle','Artikelen','Boeken (delen)','Proefschriften','Overig')
+    }
     PP$ColOrder <- c('Closed','Open')
     #PP$ColOrder <- c('Open','Closed')
     PP$kleuren <- 'FromFile'
-    PP$Titel <- 'Open access for different scholarly publication types'
     PP$xlab <- ''
     PP$ylab <- ''
     PP$LegTitle <- list(NULL)
-    PP$LegLbl <- c('Closed\naccess','Open\naccess')
     PP$TextSizeTitle <- 15
     PP$TextFont <- 'Verdana'
     PP$InclSummPos <- 'left'
@@ -406,12 +432,22 @@ for (StandardPlot in multiPlot) {
     # Schatting is dan 66.7% van alle pubs is een artikel --> er zijn in werkelijkheid 133.3 artikelen.
     # Percentage in grafiek is dan 50/133.3 = 37.5 %
     
-    
+    # Eerst 2016 KUOZ-cijfers
+    source(paste0(Paths$RCode,'/Help/VSNU-pdf.R'))
+    KUOZ <- ReadVSNUpdf()$doc1
+    KUOZ <- KUOZ[KUOZ$Bron=='KUOZ' & KUOZ$Type=='Totaal_Artikel' & KUOZ$jaar==2016 & KUOZ$Uni!='OU',]
+    KUOZ$jaar <- as.numeric(as.character(KUOZ$jaar))
+    temp <- read.csv2(paste0(Paths$Params,'/UniNaamOmzet.csv'), stringsAsFactors = F)
+    KUOZ$Uni <- droplevels(KUOZ$Uni)
+    levels(KUOZ$Uni) <- vapply(levels(KUOZ$Uni), function(x) {temp$NARCISNaam[temp$VSNUNaam==x]}, character(1))
+    rm(temp)
+    KUOZ <- KUOZ[,4:6]
+    names(KUOZ) <- c("Jaar","Bron","adjfreq")
     
     #Selectie
     plotData <- plotData[plotData$set.publication,]
     plotData <- plotData[c(1:(ncol(plotData)-11),ncol(plotData))]
-    Jaren <- c(2000,2015, F)
+    Jaren <- c(2000,2016, F)
     plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)'),]
     PP$PubWeigh <- read.csv2(paste0(Paths$Params,'/PubWeigh.csv'))
     PP$PercBase <- plotData
@@ -432,6 +468,7 @@ for (StandardPlot in multiPlot) {
     PP$PercBase <- merge(PP$PercBaseVSNU, PP$PercBaseWeigh[c(1,2,6)])
     PP$PercBase$adjfreq <- PP$PercBase$freq*PP$PercBase$weigh
     PP$PercBase <- PP$PercBase[c(1,2,5)]
+    PP$PercBase <- rbind.fill(PP$PercBase, KUOZ)
     
     plotData <- plotData[plotData$Access=='Open',]
     plotData <- plotData[plotData$Type=='Article',]
@@ -450,15 +487,24 @@ for (StandardPlot in multiPlot) {
     PP$epsFriendly <- F
     PP$AddRange <- list(What='SD',which='Average',range=1, alpha=.333)
     PP$LegTitle <- list(NULL)
-    PP$Titel <- 'Open Access of articles across Dutch universities'
-    PP$xlab <- 'Year of publication'
-    PP$ylab <- expression(paste(over('OA articles (NARCIS)','Total articles (estim. based on VSNU)'),'  %'))
     PP$Anonimize <- T
     PP$LegDynamicHeight <- F
-    PP$LegLbl <- c('',' ','Individual',substring('                 ',1,2:8), 'Universities',substring('               ',1,9:10),'\n\nAverage\n\n')
-    PP$LegLblSD <- 'Area within\n1 standard\ndeviation from\naverage'
     PP$TextSizeLblY <- 12
     PP$TextSizeTitle <- 18
+    
+    if(PP$LabelsLang=='en') {
+      PP$Titel <- 'Open Access of articles across Dutch universities'
+      PP$xlab <- 'Year of publication'
+      PP$ylab <- expression(paste(over('OA articles (NARCIS)','Total articles (estim. based on VSNU)'),'  %'))
+      PP$LegLbl <- c('',' ','Individual',substring('                 ',1,2:8), 'Universities',substring('               ',1,9:10),'\n\nAverage\n\n')
+      PP$LegLblSD <- 'Area within\n1 standard\ndeviation from\naverage'
+    } else {
+      PP$Titel <- 'Open Access voor artikelen, voor verschillende universiteiten'
+      PP$xlab <- 'Jaar van publicatie'
+      PP$ylab <- expression(paste(over('OA artikelen (NARCIS)','Schatting artikelen - o.b.v VSNU'),'  %'))
+      PP$LegLbl <- c('',' ','Individuele',substring('                 ',1,2:8), 'Universiteiten',substring('               ',1,9:10),'\n\nGemiddelde\n\n')
+      PP$LegLblSD <- 'Gebied binnen\n1 standaard\ndeviatie van\nhetgemiddelde'
+    }
   } # NR 4: Open Access totalen als percentage VSNU met schatting
   if(15 %in% StandardPlot) {
     # Uitleg van de weging:
@@ -737,20 +783,32 @@ for (StandardPlot in multiPlot) {
     #Plotparameters
     PP$plotType <- 'Histo'
     PP$plotX <- 'Jaar'
-    PP$xlab <- 'Year of publication'
-    PP$ylab <- 'Number of articles'
     PP$plotCol <- 'Access'
     PP$ColOrder <- c('Closed', 'Open')
     PP$kleuren <- 'FromFile'
     #PP$plotPerc <- 'Open'
     #PP$ylab2 <- 'Percentage Open Access'
     PP$LegTitle <- list(NULL)
-    PP$Titel <- 'Open access of articles with different totals and estimates'
+    
+    if(PP$LabelsLang=='en') {
+      PP$xlab <- 'Year of publication'
+      PP$ylab <- 'Number of articles'
+      PP$Titel <- 'Open access of articles with different totals and estimates'
+      PP$LegLblAlpha <- c('Total amount of\nresearch output\n(VSNU)',
+                          'Estimated number\nof articles\n(based on VSNU)',
+                          'KUOZ (VSNU):\nTotal number\nof articles')
+    } else {
+      PP$xlab <- 'Jaar van publicatie'
+      PP$ylab <- 'Aantal artikelen'
+      PP$Titel <- 'Open access voor artikelen, met totalen en schatting'
+      PP$LegLblAlpha <- c('Totale wetensch.\noutput',
+                          'Schatting\nartikelen -\no.b.v VSNU',
+                          'Totaal aantal\nartikelen\n(VSNU)')
+    }
     
     PP$SecLine <- list(What='VSNUTotals', Total=c('Wetensch', 'Vak'), Articleestimate=c('Estimate'), KUOZ=c('KUOZ'))
     #names(PP$SecLine) <- c('What','Total (VSNU)')
     PP$extrakleuren <- list(VSNULine=c('#D02020','#00FF00','#0000FF'))
-    PP$LegLblAlpha <- c('Total amount of\nresearch output\n(VSNU)', 'Estimated number\nof articles\n(based on VSNU)', 'KUOZ (VSNU):\nTotal number\nof articles')
     PP$LegLblLineColor <- PP$LegLblAlpha
     PP$LegLblLinetype <- rep('constant',3)
     PP$LegWidth <- list(fill=1, rest=2)
@@ -801,6 +859,108 @@ for (StandardPlot in multiPlot) {
     PP$LegHeight <- list(fill=2, rest=4)
     
   } # NR 3C: Open Access voor artikelen met KUOZ, zonder schatting, 2008-2016
+  if(24 %in% StandardPlot) {
+    plotData <- plotData[plotData$set.publication,]
+    plotData <- plotData[c(1:(ncol(plotData)-11),ncol(plotData))]
+    Jaren <- c(2000,2016, F)
+    plotData <- plotData[plotData$Type %in% c('Doctoral Thesis') & plotData$BronSoort %in% c('Universiteit (4TU)', 'Universiteit (alg)'),]
+    PP$PercBase <- VSNU[VSNU$Categorie=='Thesis',2:4]
+    names(PP$PercBase) <- c('group','x','freq')
+    
+    PP$plotType <- 'Lijn1'
+    PP$plotX <- 'Jaar'
+    PP$plotCol <- 'Bron'
+    PP$plotSymbol <- 'Bron'
+    PP$includeSumm <- F
+  } # Compleetheid theses
+  if(34 %in% StandardPlot) {
+    
+    # Uitleg van de weging:
+    #------------------------------
+    # We kijken eerst hoeveel publicaties er zijn die vallen binnen de VSNU-definitie van publicatie
+    # Gebaseerd op Param/PubWeigh.csv (PhD=altijd publ, boek= 90% publicatie, ...)
+    # Dan kijken we eerst of dit meer is dan de VSNU zegt. Zo ja, dan gaan we er van uit dat we alle artikelen in NARCIS hebben,
+    # en wordt dit onze schatting van het daadwerkelijk aantal artikelen.
+    # Zijn het er minder, dan gaan we er van uit dat de verhouding artikelen/publicaties in NARCIS klopt, deze verhouding passen we toe op VSNU.
+    # Voorbeeld: NARCIS heeft 100 artikelen (50 OA), 100 PhDs. VSNU zegt 150 publicaties.
+    # Schatting is dan daadwerkelijk 100 artikelen. Percentage in grafiek is dan 50 %
+    # Voorbeeld 2: NARCIS heeft 100 artikelen (50 OA), 50 PhDs. VSNU zegt 200 publicaties.
+    # Schatting is dan 66.7% van alle pubs is een artikel --> er zijn in werkelijkheid 133.3 artikelen.
+    # Percentage in grafiek is dan 50/133.3 = 37.5 %
+    
+    # Eerst 2016 KUOZ-cijfers
+    source(paste0(Paths$RCode,'/Help/VSNU-pdf.R'))
+    KUOZ <- ReadVSNUpdf()$doc1
+    KUOZ <- KUOZ[KUOZ$Bron=='KUOZ' & KUOZ$Type=='Totaal_Artikel' & KUOZ$jaar==2016 & KUOZ$Uni!='OU',]
+    KUOZ$jaar <- as.numeric(as.character(KUOZ$jaar))
+    temp <- read.csv2(paste0(Paths$Params,'/UniNaamOmzet.csv'), stringsAsFactors = F)
+    KUOZ$Uni <- droplevels(KUOZ$Uni)
+    levels(KUOZ$Uni) <- vapply(levels(KUOZ$Uni), function(x) {temp$NARCISNaam[temp$VSNUNaam==x]}, character(1))
+    rm(temp)
+    KUOZ <- KUOZ[,4:6]
+    names(KUOZ) <- c("Jaar","Bron","adjfreq")
+    
+    #Selectie
+    plotData <- plotData[plotData$set.publication,]
+    plotData <- plotData[c(1:(ncol(plotData)-11),ncol(plotData))]
+    Jaren <- c(2000,2016, F)
+    plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)'),]
+    PP$PubWeigh <- read.csv2(paste0(Paths$Params,'/PubWeigh.csv'))
+    PP$PercBase <- plotData
+    PP$PercBase$freq <- PP$PercBase$freq*sapply(PP$PercBase$Type,function(x) {
+      PP$PubWeigh$WeighPerc[PP$PubWeigh$Type==x]
+    })
+    PP$PercBase <- PP$PercBase[!is.na(PP$PercBase$Jaar) & PP$PercBase$Jaar>=Jaren[1] & PP$PercBase$Jaar<=Jaren[2],c(2,3,5,7:ncol(PP$PercBase))]
+    PP$PercBaseArticles <- plyr::count(PP$PercBase[PP$PercBase$Type=='Article',], vars=c('Jaar','Bron'), wt_var = 'freq')
+    PP$PercBaseTotals <- plyr::count(PP$PercBase, vars=c('Jaar','Bron'), wt_var = 'freq')
+    PP$PercBaseVSNU <- VSNU[VSNU$Categorie %in% c('Wetensch', 'Vak'),c(3,2,4)]
+    PP$PercBaseVSNU <- plyr::count(PP$PercBaseVSNU, vars=c('Jaar','Bron'), wt_var='freq')
+    PP$PercBaseWeigh <- merge(PP$PercBaseArticles, PP$PercBaseTotals, by=c('Jaar','Bron'))
+    names(PP$PercBaseWeigh) <- c('Jaar','Bron','Articles','NARCTot')
+    PP$PercBaseWeigh <- merge(PP$PercBaseWeigh, PP$PercBaseVSNU, by=c('Jaar','Bron'))
+    PP$PercBaseWeigh$weigh <- PP$PercBaseWeigh$Articles/sapply(1:nrow(PP$PercBaseWeigh), function(n) {
+      min(PP$PercBaseWeigh[n,4:5])
+    })
+    PP$PercBase <- merge(PP$PercBaseVSNU, PP$PercBaseWeigh[c(1,2,6)])
+    PP$PercBase$adjfreq <- PP$PercBase$freq*PP$PercBase$weigh
+    PP$PercBase <- PP$PercBase[c(1,2,5)]
+    PP$PercBase <- rbind.fill(PP$PercBase, KUOZ)
+    
+    plotData <- plotData[plotData$Type=='Article',]
+    #plotData$freq <- plotData$freq*sapply(plotData$Type,function(x) {
+    #  PP$PubWeigh$WeighPerc[PP$PubWeigh$Type==x]
+    #})
+    names(PP$PercBase) <- c('x', 'group', 'freq')
+    
+    
+    #Plotparameters
+    PP$Zoomfactor <- PP$Zoomfactor*.8
+    PP$plotType <- 'Lijn1'
+    PP$plotX <- 'Jaar'
+    PP$plotCol <- 'Bron'
+    PP$plotSymbol <- 'Bron'
+    PP$epsFriendly <- F
+    PP$AddRange <- list(What='SD',which='Average',range=1, alpha=.333)
+    PP$LegTitle <- list(NULL)
+    PP$Anonimize <- T
+    PP$LegDynamicHeight <- F
+    PP$TextSizeLblY <- 12
+    PP$TextSizeTitle <- 18
+    
+    if(PP$LabelsLang=='en') {
+      PP$Titel <- 'Open Access of articles across Dutch universities'
+      PP$xlab <- 'Year of publication'
+      PP$ylab <- expression(paste(over('OA articles (NARCIS)','Total articles (estim. based on VSNU)'),'  %'))
+      PP$LegLbl <- c('',' ','Individual',substring('                 ',1,2:8), 'Universities',substring('               ',1,9:10),'\n\nAverage\n\n')
+      PP$LegLblSD <- 'Area within\n1 standard\ndeviation from\naverage'
+    } else {
+      PP$Titel <- 'Open Access voor artikelen, voor verschillende universiteiten'
+      PP$xlab <- 'Jaar van publicatie'
+      PP$ylab <- expression(paste(over('OA artikelen (NARCIS)','Schatting artikelen - o.b.v VSNU'),'  %'))
+      PP$LegLbl <- c('',' ','Individuele',substring('                 ',1,2:8), 'Universiteiten',substring('               ',1,9:10),'\n\nGemiddelde\n\n')
+      PP$LegLblSD <- 'Gebied binnen\n1 standaard\ndeviatie van\nhetgemiddelde'
+    }
+  } # NR 4: Open Access totalen als percentage VSNU met schatting
   if(99 %in% StandardPlot) {
     PP$plotType <- 'ColorCheck'
   } # ColorCheck
@@ -957,6 +1117,11 @@ for (StandardPlot in multiPlot) {
     if(!is.null(PP$polarRadius)) {PP$Zoomfactor <- 1.5*PP$Zoomfactor/PP$polarRadius}
     if(is.null(PP$SavePlot)) {PP$SavePlot <- F}
     if(is.null(PP$SaveGglPlot)) {PP$SaveGglPlot <- F}
+    if(is.null(PP$WerksetDate)) {
+      temp <- regexpr('[0-9]{8,}', Paths$WerksetTotal)
+      temp <- substr(Paths$WerksetTotal, temp, temp+7)
+      PP$WerksetDate <- as.Date(temp, format='%Y%m%d')
+    }
     PP$extrakleuren$NormalLineThickness <- PP$extrakleuren$NormalLineThickness*PP$Zoomfactor
     PP$extrakleuren$AvgLineThickness <- PP$extrakleuren$AvgLineThickness*PP$Zoomfactor
     PP$extrakleuren$RefLineThickness <- PP$extrakleuren$RefLineThickness*PP$Zoomfactor
@@ -1270,7 +1435,7 @@ for (StandardPlot in multiPlot) {
       {plotVals$group <- paste0(plotVals$group,plotVals$linetype)}
     } else {
       plotVals$linetype <- plotVals$col
-      PP$linetypes <- rep(1,100)[1:length(unique(plotVals$symbol))]
+      PP$linetypes <- rep(1,100)[1:length(unique(plotVals$col))]
     }
     plotVals$linesize <- factor(PP$extrakleuren$NormalLineThickness)
     names(plotVals)[n] <- 'freq'
@@ -1340,6 +1505,7 @@ for (StandardPlot in multiPlot) {
         sd(plotVals$perc[plotVals$x==x])
       })
     }
+    plotVals$Origcol <- plotVals$col
     if(PP$Anonimize) {
       plotVals$col <- ifelse(plotVals$col %in% levels(TotalVals$Bron), sapply(as.numeric(plotVals$col),function(n) {paste0(rep(' ',n),collapse='')}), as.character(plotVals$col))
       plotVals$symbol <- ifelse(plotVals$symbol %in% levels(TotalVals$Bron), sapply(as.numeric(plotVals$symbol),function(n) {paste0(rep(' ',n),collapse='')}), as.character(plotVals$symbol))
@@ -1604,7 +1770,17 @@ for (StandardPlot in multiPlot) {
   #To-Do: file bug report for combining legend growth when using multiple identic aesthetics labels
   if (PP$SaveGglPlot) {
     # Maten: Standaard bargraph heeft links+rechts marges 6px, bars 16px, gap 11px, dus breedte 27n+1 px
-    GglLabels <- read.csv2(paste0(Paths$Params,'/GglLabels.csv'))
+    GglLabels <- read.csv2(paste0(Paths$Params,'/GglLabels.csv'), stringsAsFactors = F)
+    GglLabels <- GglLabels[GglLabels$Lang==PP$LabelsLang,]
+    if(PP$LabelsLang=='en') {
+      GglLabels$Tekst[GglLabels$Plotnr!=99] <- paste0(GglLabels$Tekst[GglLabels$Plotnr!=99],'<br>Used data is from ',PP$WerksetDate)
+      GglLabels$Tekst[GglLabels$Plotnr==7] <- paste0(GglLabels$Tekst[GglLabels$Plotnr==7],', using publications since ',Jaren[1])
+      GglLabels$Tekst[GglLabels$Plotnr!=99] <- paste0(GglLabels$Tekst[GglLabels$Plotnr!=99],'.')
+    } else {
+      GglLabels$Tekst[GglLabels$Plotnr!=99] <- paste0(GglLabels$Tekst[GglLabels$Plotnr!=99],'<br>Gebruikte data is per ',PP$WerksetDate)
+      GglLabels$Tekst[GglLabels$Plotnr==7] <- paste0(GglLabels$Tekst[GglLabels$Plotnr==7],', voor publicaties sinds ',Jaren[1])
+      GglLabels$Tekst[GglLabels$Plotnr!=99] <- paste0(GglLabels$Tekst[GglLabels$Plotnr!=99],'.')
+    }
     if(exists('temp')) {rm(temp)}
     if(7 %in% StandardPlot) {
       googleVals <- spread(plotVals[1:3], col, freq)
@@ -1615,7 +1791,6 @@ for (StandardPlot in multiPlot) {
       gglfrm[gglfrm$Access=='All',c('Open', 'Closed')] <- gglfrm[gglfrm$Access=='All',c('Open', 'Closed')]*(nrow(gglfrm)-1)
       names(gglfrm)[4] <- '{ role: \'annotation\' }'
       gglfrm$Access <- PP$xvallabs
-      
       temp <- list(pre='<script type="text/javascript" id="barchartscript',
                    pre2='">\n/*<![CDATA[*/\ngoogle.setOnLoadCallback(drawChart',
                    pre3=');\nfunction drawChart',
@@ -1629,8 +1804,7 @@ for (StandardPlot in multiPlot) {
                                 'chartArea: {left: 105, top: 20, width: \'',136*2,'\', height: \'50%\'}',
                                 '});}\n/*]]>*/\n</script>'),
                    header=GglLabels$header[GglLabels$Plotnr %in% StandardPlot],
-                   graphtext=GglLabels$Tekst[GglLabels$Plotnr %in% StandardPlot])
-      
+                   graphtext=paste0(GglLabels$Tekst[GglLabels$Plotnr %in% StandardPlot]))
       arraytxt <- paste0('[[',paste0('\'', names(gglfrm)[-4], '\'',collapse=', '),', ',names(gglfrm[4]),'], ',
                          paste0(apply(gglfrm,1,function(x) {paste0('[\'',x[1],'\', ',x[2],', ',x[3],', \'\']')}), collapse=', '),']')
       (textR <- with(temp, paste0(pre,n,pre2,n,pre3,n,pre4, arraytxt, post1, n, post2)))
@@ -1651,8 +1825,13 @@ for (StandardPlot in multiPlot) {
         return(x)
       }), stringsAsFactors = F)
       names(gglfrm)[1] <- 'Access'
-      names(gglfrm)[4] <- 'Total - VSNU'
-      gglfrm <- gglfrm[c('Access','Open','Closed','Total - VSNU')]
+      if(PP$LabelsLang=='en') {
+        names(gglfrm)[4] <- 'Total - VSNU'
+        gglfrm <- gglfrm[c('Access','Open','Closed','Total - VSNU')]
+      } else {
+        names(gglfrm)[4] <- 'Totalen - VSNU'
+        gglfrm <- gglfrm[c('Access','Open','Closed','Totalen - VSNU')]
+      }
       
       
       temp <- list(pre='<script type="text/javascript" id="barchartscript',
@@ -1736,12 +1915,21 @@ for (StandardPlot in multiPlot) {
         x[is.na(x)] <- 'null'
         return(x)
       }), stringsAsFactors = F)
-      names(gglfrm)[1] <- 'Access'
-      names(gglfrm)[4] <- 'Total - VSNU'
-      names(gglfrm)[5] <- 'Estimate of articles - based on VSNU'
-      names(gglfrm)[6] <- 'KUOZ (VSNU): No of articles'
+      if(PP$LabelsLang=='en') {
+        names(gglfrm)[1] <- 'Access'
+        names(gglfrm)[4] <- 'Total scholarly output'
+        names(gglfrm)[5] <- 'Estimate of articles - based on VSNU'
+        names(gglfrm)[6] <- 'Total no of articles (VSNU)'
+        gglfrm <- gglfrm[c('Access','Open','Closed',names(gglfrm)[4:6])]
+      } else {
+        names(gglfrm)[1] <- 'Access'
+        names(gglfrm)[4] <- 'Totale wetensch. output'
+        names(gglfrm)[5] <- 'Schatting artikelen - o.b.v VSNU'
+        names(gglfrm)[6] <- 'Totaal aantal artikelen (VSNU)'
+        gglfrm <- gglfrm[c('Access','Open','Closed',names(gglfrm)[4:6])]
+      }
       
-      gglfrm <- gglfrm[c('Access','Open','Closed','Total - VSNU', 'Estimate of articles - based on VSNU','KUOZ (VSNU): No of articles')]
+      
       
       
       temp <- list(pre='<script type="text/javascript" id="barchartscript',
@@ -1757,7 +1945,7 @@ for (StandardPlot in multiPlot) {
                                 '3: {type:\'line\'}, ',
                                 '4: {type:\'line\'}}, ',
                                 'pointSize: 4, ',
-                                'chartArea: {left: 105, top: 60, width: ',463,', height: \'61.8%\'}',
+                                'chartArea: {left: 105, top: 60, width: ',440,', height: \'61.8%\'}',
                                 '});}\n/*]]>*/\n</script>'),
                    header=GglLabels$header[GglLabels$Plotnr %in% StandardPlot],
                    graphtext=GglLabels$Tekst[GglLabels$Plotnr %in% StandardPlot])
@@ -1774,27 +1962,28 @@ for (StandardPlot in multiPlot) {
     if(14 %in% StandardPlot) {
       plotVals$closed <- sapply(1:nrow(plotVals), function(n) {
         sum(TotalVals$freq[!is.na(TotalVals$Jaar) & TotalVals$Jaar==plotVals$x[n] &
-                             ((as.character(TotalVals$Bron)==as.character(plotVals$col[n])) | 
+                             ((as.character(TotalVals$Bron)==as.character(plotVals$Origcol[n])) | 
                                 (TotalVals$BronSoort %in% c('Universiteit (alg)', 'Universiteit (4TU)') & plotVals$col[n]=='Average')) &
                              !is.na(TotalVals$Type) & TotalVals$Type=='Article' &
                              TotalVals$set.publication &
                              TotalVals$Access=='Closed'])
       })
       plotVals$col <- factor(plotVals$col)
-      googleVals <- spread(plotVals[c(1:2,8)], col, perc)
-      googleTooltips <- spread(plotVals[c(1:2,4)], col, freq)
-      googleTooltipsCl <- spread(plotVals[c(1:2,10)], col, closed)
+      googleVals <- spread(plotVals[c(1,10,8)], Origcol, perc)
+      googleTooltips <- spread(plotVals[c(1,10,4)],Origcol, freq)
+      googleTooltipsCl <- spread(plotVals[c(1,10,11)], Origcol, closed)
       googleTooltips <- googleTooltips[c(1, order(names(googleTooltips)[2:14])+1,15)]
       googleTooltipsCl <- googleTooltipsCl[c(1, order(names(googleTooltipsCl)[2:14])+1,15)]
       googleTooltips <- data.frame(googleTooltips$x, sapply(2:length(googleTooltips), function(n) {
-        paste0('\'', names(googleTooltips)[n],' (',
+        paste0('\'', plotVals$col[plotVals$Origcol==names(googleTooltips)[n]][1],' (',
                googleTooltips$x, '), ',
                round(googleVals[,n]*100, digits = 2),
                '% :<br>', googleTooltips[,n],' OA (NARCIS),<br>',
                googleTooltipsCl[,n], ' CA (NARCIS),<br>',
                round(googleTooltips[,n]/googleVals[,n]),
-               ' Total (based on VSNU)\'')
+               ifelse(PP$LabelsLang=='en',' Total (based on VSNU)\'', ' Totaal (schatting o.b.v. VSNU)\''))
       }), stringsAsFactors = F)
+      
       names(googleTooltips) <- c('x', paste0(names(googleVals),'-tt')[-1])
       googleVals <- merge(googleVals, googleTooltips)
       googleVals <- googleVals[c(1,
@@ -1819,8 +2008,15 @@ for (StandardPlot in multiPlot) {
       if(PP$Anonimize) {names(gglfrm)[2:27] <- sapply(2:27, function (n) {paste0(rep(' ',n), collapse='')})} else {
         names(gglfrm)[2:27] <- names(googleVals[2:27])
       }
-      names(gglfrm)[31:34] <- c('Average - 1 sd','Average - 1 sd-tt','Average +/- 1 sd','Average +/- 1 sd-tt')
-      gglfrm <- gglfrm[c(1,rep(13:1, each=2)*2+c(0,1),31:34,28,29)]
+      if(PP$LabelsLang=='en') {
+        names(gglfrm)[31:34] <- c('Average - 1 sd','Average - 1 sd-tt','Average +/- 1 sd','Average +/- 1 sd-tt')
+        gglfrm <- gglfrm[c(1,rep(13:1, each=2)*2+c(0,1),31:34,28,29)]
+      } else {
+        gglfrm$Average.tt <- sub('Average','Gemiddelde',gglfrm$Average.tt)
+        names(gglfrm)[c(28, 33)] <- c('Gemiddelde', 'Gemiddelde +/- 1 sd')
+        gglfrm <- gglfrm[c(1,rep(13:1, each=2)*2+c(0,1),31:34,28,29)]
+      }
+      
       
       PP$GglPointSize <- 4
       temp <- list(pre='<script type="text/javascript" id="barchartscript',
@@ -1872,10 +2068,10 @@ for (StandardPlot in multiPlot) {
                           '<p style="margin-left:110px; width: 550px;"><label>',temp$graphtext,'</label></p>')
     }
     if(exists('temp')) {
-      if('GoogleChartsCode.htm' %in% list.files(Paths$input)) {
-        htmlfile <- read_file(paste0(Paths$input,'/GoogleChartsCode.htm'))
+      if(PP$GglPlotFileName %in% list.files(Paths$input)) {
+        htmlfile <- read_file(paste0(Paths$input,'/',PP$GglPlotFileName))
       } else {
-        htmlfile <- read_file(paste0(Paths$input,'/GoogleChartsCode orig.htm'))
+        htmlfile <- read_file(paste0(Paths$input,'/GoogleChartsCode orig',PP$LabelsLang,'.htm'))
       } # This is meant to be able to start with a clean version by removing GoogleChartsCode.htm. Also note this script was written with Paths$input==Paths$output
       inspos <- list(gregexpr(paste0('<script type="text/javascript" id="barchartscript(',temp$n,')?">[^>]*google\\.setOnLoadCallback\\(drawChart',temp$n,'.*?</script>'), htmlfile)[[1]],
                      gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_',temp$n,'"[^<>]*></div>.*?</label></p>'), htmlfile)[[1]])
@@ -1890,7 +2086,7 @@ for (StandardPlot in multiPlot) {
                              textBodyR,
                              substr(htmlfile,inspos[[2]]+attr(inspos[[2]],'match.length'),nchar(htmlfile)))
           write_file(htmlfile,
-                     path=paste0(Paths$output,'/GoogleChartsCode.htm')) # Meant to be same file as with Paths$input
+                     path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
         }
       } else {
         inspos <- gregexpr('<script type="text/javascript" id="barchartscript[0-9]*">.*?</script>', htmlfile)[[1]]
@@ -1905,13 +2101,13 @@ for (StandardPlot in multiPlot) {
                            textBodyR,
                            substr(htmlfile,pos[2]+1,nchar(htmlfile)))
         write_file(htmlfile,
-                   path=paste0(Paths$output,'/GoogleChartsCode.htm')) # Meant to be same file as with Paths$input
+                   path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
       }
     }
     if(multiPlot[[1]]==StandardPlot) {
-      inspos <- gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_.?"[^<>]*></div>[^<>]*<p[^<>]*><label>[^<>]*</label></p>',
-                                '[^<>]*<br><br>[^<>]*<p[^<>]*><label>[^<>]*</label></p>'), htmlfile)[[1]]
-      inspos <- gregexpr('<label>[^<>]*</label>', substr(htmlfile, inspos, inspos+attr(inspos, 'match.length')-1))[[1]]+inspos-1
+      inspos <- gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_.?"[^<>]*></div>[^<>]*<p[^<>]*><label>(([^<>]*)|(<br>))*</label></p>',
+                                '[^<>]*<br><br>[^<>]*<p[^<>]*><label>(([^<>]*)|(<br>)|(<a[^<>]*>[^<>]*</a>))*</label></p>'), htmlfile)[[1]]
+      inspos <- gregexpr('<label>(([^<>]*)|(<br>))*</label>', substr(htmlfile, inspos, inspos+attr(inspos, 'match.length')-1))[[1]]+inspos-1
       inspos <- c(inspos[length(inspos)],attr(inspos, 'match.length')[length(inspos)]) # Ugly but works: inspos[1]=index of last match, inspos[2]=match.length
       htmlfile <- paste0(substr(htmlfile,1,inspos[1]-1),
                          '<label>',
@@ -1921,8 +2117,23 @@ for (StandardPlot in multiPlot) {
       if(PP$GglPlotGlobLinks) {
         htmlfile <- gsub('href="/','href="http://www.narcis.nl/', htmlfile)
       }
+      # And delete graph 2, if present
+      if(F) {
+        inspos <- regexpr(paste0('<script[^<>]*barchartscript">[^<>]*',
+                                 '\\/\\*<!\\[CDATA\\[\\*\\/[^<>]*',
+                                 'barchart_div_2[^<>]*',
+                                 '\\/\\*\\]\\]>\\*\\/[^<>]*',
+                                 '</script>'), htmlfile)
+        htmlfile <- paste0(substr(htmlfile, 1, inspos-1), substr(htmlfile, inspos+attr(inspos, 'match.length')+1, nchar(htmlfile)))
+        inspos <- regexpr(paste0('<label>This chart shows the actual number of open and closed access articles in NARCIS, since 2000\\.<\\/label>'), htmlfile)
+        inspos2 <- gregexpr('<\\/p>', substr(htmlfile, inspos-1000, inspos))
+        inspos2 <- inspos2[[length(inspos2)]]+inspos-998
+        inspos <- regexpr('<br>', substr(htmlfile, inspos+attr(inspos, 'match.length'), inspos+attr(inspos, 'match.length')+1000))+inspos+attr(inspos, 'match.length')-1
+        htmlfile <- paste0(substr(htmlfile, 1, inspos2),'\n',substr(htmlfile, inspos, nchar(htmlfile)))
+      }
+      
       write_file(htmlfile,
-                 path=paste0(Paths$output,'/GoogleChartsCode.htm')) # Meant to be same file as with Paths$input
+                 path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
     }
   }
   print(paste('Graph',StandardPlot,'completed'))
