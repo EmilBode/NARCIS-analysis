@@ -1,137 +1,415 @@
-# Restore from old state
-if(exists('Step')) {
-  StepBU <- Step
-} else {
-  src <- getSrcDirectory(function(x) {x})
-  if(src!='') setwd(src)
-  rm(src)
-  source(paste0(getwd(), '/SetLocal.r'))
-  libinstandload('readr','plyr','dplyr','lubridate','stringr','XML','rvest','oai','profvis','fastmatch','RMongo','jsonlite')
-  Sys.setenv(TZ='UTC')
-  options(stringsAsFactors = T)
-}
-if(!exists('SubStep')) {SubStep <- 'Start'}
-if(exists('Params') && !is.null(Params$LastPath) && Params$LastPath!=Paths$dumproot) stop('If path is changed, restart first!')
-if(exists('Params') && !is.null(Params$cla)) {
-  Params <- list(cla=Params$cla, Resume=list())
-} else {
-  Params <- list(Resume=list())
-  Params$cla=readNARCIScla()
-}
+{ ## Helper functions 
+  ### deCache (clean=F, quiet=F, checkTotal=F)
+  deCache <- function(clean=F, quiet=F, checkTotal=T, save=ifelse(Params$harv=='didlmods','MaxMem',F), fileNames='auto') {
+    ##### clean \t Should files that have been stored earlier be deleted? Caution: Only works with standard filenames
+    ###### Also cleans Total_New en Total_New_Sets if save=='MaxMem'
+    ##### quiet \t Suppress messages in console?
+    ##### checkTotal \t Check if the number of records is equal for all measurements. If F, some checks are still performed
+    ##### save \t Save files as well, or only decache. 'MaxMem' to only save if memory usage grows too large, otherwise T or F
+    ##### fileNames \t Names to be used for saving, or 'auto'.
+    ###### Vector of complete filenames for c('Total_New','Total_ID','Total_Del','MetaOut','Errors','Total_New_Sets')
+    ###### Names being NA are not stored, with a warning if quiet=F
+    ##### Cachefiles are emptied, not removed
+    DoneAnything <- F
+    if(exists('Total_New_Sets') && exists('Total_New_Sets_Cache')) {
+      if(!quiet) print('Saving cached results dataframes')
+      DoneAnything <- T
+      for(i in Params$subdfs) {
+        if(nrow(Total_New_Sets[[i]])!=nrow(Total_New)) {
+          Total_New_Sets[[i]] <<- rbind.fill(Total_New_Sets[[i]], Total_New_Sets_Cache[[i]])
+          Total_New_Sets_Cache[[i]] <<- Total_New_Sets_Cache[[i]][F,]
+        }
+        if(!nrow(Total_New_Sets[[i]]) %in% c(nrow(Total_New), MetaOut$NoRecords-MetaOut$NoSaved)) {
+          stop('Unclear what values should be decached and which not')
+        }
+      }
+    }
+    if(exists('Total_New') && exists('Total_New_Cache')) {
+      DoneAnything <- T
+      if(!quiet) print('Saving cached results raw list')
+      if(nrow(Total_New)<MetaOut$NoRecords-MetaOut$NoSaved && 
+         nrow(Total_New)+nrow(Total_New_Cache)>=MetaOut$NoRecords-MetaOut$NoSaved &&
+         !any(Total_New_Cache$ID %in% Total_New$ID)) {
+        Total_New <<- rbind.fill(Total_New, Total_New_Cache)
+        Total_ID <<- c(Total_ID, Total_New_Cache$ID)
+        Total_New_Cache <<- Total_New_Cache[F,]
+      }
+      if(nrow(Total_New)<MetaOut$NoRecords-MetaOut$NoSaved || length(Total_ID)<MetaOut$NoRecords) {
+        stop('Warning: number of records seems corrupt (too few records)')
+      }
+      if(checkTotal && (nrow(Total_New)!=MetaOut$NoRecords-MetaOut$NoSaved || length(Total_ID)!=MetaOut$NoRecords)) {
+        stop('Warning: number of records seems corrupt (too many)')
+      }
+    }
+    if(identical(save, T) || (save=='MaxMem' && 
+                              object.size(Total_New)+object.size(Total_New_Sets)+object.size(Total_New_Sets_Cache)+object.size(Total_New_Cache)>Params$MaxMem)) {
+      DoneAnything <- T
+      if(!quiet) print('Saving files')
+      if(class(Total_New_Sets)=='list' && class(Total_New_Sets[[1]])=='data.frame' && nrow(Total_New_Sets[[1]])>0) {
+        if(all(fileNames=='auto')) {
+          thisName <- paste0(Paths$Summaries,'/Chunks/Total_New_Sets (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+        } else if(!is.na(fileNames[6])) {
+          thisName <- fileNames[6]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for Total_New_Sets. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(!is.na(thisName)) saveRDS(Total_New_Sets, file=thisName)
+      }
+      if(nrow(Total_New)>0) {
+        if(all(fileNames=='auto')) {
+          if(save=='MaxMem') {
+            thisName <- paste0(Paths$Summaries,'/Chunks/Total_Part (file ',Total_New$filenr[1],'-',Total_New$filenr[nrow(Total_New)],'), (',
+                               gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+          } else {
+            thisName <- paste0(Paths$Summaries,'/Chunks/Total_New (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+          }
+        } else if(!is.na(fileNames[1])) {
+          thisName <- fileNames[1]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for Total_New. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(!is.na(thisName)) saveRDS(Total_New, file=thisName)
+      }
+      if(length(Total_ID)>0) {
+        if(all(fileNames=='auto')) {
+          thisName <- paste0(Paths$Summaries,'/Chunks/Total_ID (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+        } else if(!is.na(fileNames[2])) {
+          thisName <- fileNames[2]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for Total_ID. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(!is.na(thisName)) saveRDS(Total_ID, file=thisName)
+      }
+      if(nrow(Total_Del)>0) {
+        if(all(fileNames=='auto')) {
+          thisName <- paste0(Paths$Summaries,'/Chunks/Total_Del (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+        } else if(!is.na(fileNames[3])) {
+          thisName <- fileNames[3]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for Total_Del. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(!is.na(thisName)) saveRDS(Total_Del, file=thisName)
+      }
+      if(exists('MetaOut')) {
+        if(all(fileNames=='auto')) {
+          thisName <- paste0(Paths$Summaries,'/Chunks/MetaOut (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+        } else if(!is.na(fileNames[4])) {
+          thisName <- fileNames[4]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for MetaOut. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(save=='MaxMem' && clean) MetaOut$NoSaved <<- MetaOut$NoSaved+nrow(Total_New)
+        if(!is.na(thisName)) saveRDS(MetaOut, file=thisName)
+      }
+      if(!is.null(Errors$RecMerge)) {
+        if(all(fileNames=='auto')) {
+          thisName <- paste0(Paths$Summaries,'/Chunks/Err_RecMerge (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds')
+        } else if(!is.na(fileNames[5])) {
+          thisName <- fileNames[5]
+          if(!grepl('/', thisName)) {
+            print('Appending filename with standard-path')
+            thisName <- paste0(Paths$Summaries,'/Chunks/', thisName)
+          }
+        } else {
+          if (quiet || readline(prompt="deCache called without a filename for MetaOut. Continue?")=='y') {
+            thisName <- NA
+          } else {
+            stop('Operation cancelled (deCache)')
+          }
+        }
+        if(gsub('^.*/','',thisName) %in% list.files(sub('/[^/]*$','',thisName)) && 
+           readline(prompt=paste0("File already exists (",thisName,"). Overwrite?"))!='y') stop('Operation cancelled (deCache)')
+        if(!is.na(thisName)) saveRDS(Errors, file=thisName)
+      }
+      if(clean) {
+        if(!quiet) print('Cleaning old files')
+        RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Summaries,'/Chunks'), pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+        RDSfiles$time <- file.mtime(RDSfiles$name)
+        if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
+        RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing = T),]
+        rmvtemp <- ifelse(RDSfiles$time[grepl('Total_New', RDSfiles$name)]>RDSfiles$time[grepl('Total_Part', RDSfiles$name)],T,-1)
+        if((any(grepl('Total_Part', RDSfiles$name)) && any(grepl('Total_New \\(temp\\)', RDSfiles$name)) &&
+            RDSfiles$time[grepl('Total_New \\(temp\\)', RDSfiles$name)][1]>RDSfiles$time[grepl('Total_Part', RDSfiles$name)][1]) ||
+           !any(grepl('Total_Part', RDSfiles$name))) {
+          rmvtemp <- -1
+        } else {
+          rmvtemp <- T
+        }
+        RDSfiles <- RDSfiles[!grepl('Total_Part', RDSfiles$name),]
+        file.remove(RDSfiles$name[grepl('Total_New_Sets \\(temp\\)', RDSfiles$name)],
+                    RDSfiles$name[grepl('Total_New \\(temp\\)', RDSfiles$name)][rmvtemp],
+                    RDSfiles$name[grepl('Total_ID \\(temp\\)', RDSfiles$name)][-1],
+                    RDSfiles$name[grepl('Total_Del \\(temp\\)', RDSfiles$name)][-1],
+                    RDSfiles$name[grepl('MetaOut \\(temp\\)', RDSfiles$name)][-1],
+                    RDSfiles$name[grepl('Err_RecMerge \\(temp\\)', RDSfiles$name)][-1])
+        # Note that if you save in another folder, copies remain in Chunks
+        rm(RDSfiles)
+        if(save=='MaxMem') {
+          Total_New <<- Total_New[F,]
+          if(exists('Total_New_Sets') && class(Total_New_Sets)=='data.frame') Total_New_Sets <<- Total_New_Sets[F,]
+          if(exists('Total_New_Sets') && class(Total_New_Sets)=='list') {
+            for(i in Params$subdfs) {
+              Total_New_Sets[[i]] <<- Total_New_Sets[[i]][F,]
+            }
+          }
+        }
+      }
+    }
+    if(!quiet && DoneAnything) print('DeCaching completed')
+    gc(verbose=F)
+    return(invisible(0))
+  }
+  .Last <- function() {
+    if(exists('deCache') && 
+       ((exists('Total_New') && nrow(Total_New)>0) ||
+        (exists('Total_New_Cache') && nrow(Total_New_Cache)>0))) 
+      deCache(checkTotal=F, save=T)
+  }
+  removeDupls <- function(mlite, borderdate) {
+    libinstandload('fastmatch')
+    Sys.setenv(TZ='UTC')
+    if(class(borderdate)[1]=='character') borderdate <- as.POSIXct(borderdate)
+    if(!'POSIXt' %in% class(borderdate) || is.na(borderdate)) {
+      print('Invalid borderdate')
+      return(NULL)
+    }
+    dbls <- mlite$aggregate(pipeline=paste0('[{"$group": {"_id": {"ID": "$ID"},',
+                                            '"uniqueIds": {"$addToSet": "$_id"},',
+                                            '"count":{"$sum": 1}}}, ',
+                                            '{"$match": {"count": {"$gt": 1}}}]'),
+                            options='{"allowDiskUse": true}')
+    if(nrow(dbls)==0) {
+      print('Nothing to remove')
+      return(data.frame())
+    }
+    mids <- unlist(dbls$uniqueIds)
+    qry <- paste0('{"_id": {"$in": [{"$oid":"', paste(mids, collapse = '"}, {"$oid":"'),'"}]}}')
+    info <- mlite$find(qry, fields='{"date_header":true}', pagesize = 1e5)
+    dbls$ID <- simplify2array(dbls$`_id`$ID)
+    dbls$`_id` <- NULL
+    dbls$dates <- lapply(dbls$uniqueIds, function(id) {
+      info$date_header[fmatch(id, info$`_id`)]
+    })
+    if(any(sapply(dbls$dates, function(d) {any(is.na(d)) || min(d)>borderdate || max(d)<borderdate}))) {
+      print('Warning: borderdate is not a splitting value. Not removing anything, returning  list of doubles')
+      return(dbls)
+    }
+    rmvids <- mapply(function(id, date) {
+      id[[which.min(date)]]
+    }, dbls$uniqueIds, dbls$dates)
+    qry <- paste0('{"_id": {"$in": [{"$oid":"', paste(rmvids, collapse = '"}, {"$oid":"'),'"}]}}')
+    # temp <- mlite$find(qry, fields='{"ID":true, "date_header":true}') # Test query
+    print('Removing doubles')
+    result <- mlite$remove(qry)
+    newdbls <- mlite$aggregate(pipeline=paste0('[{"$group": {"_id": {"ID": "$ID"},',
+                                               '"uniqueIds": {"$addToSet": "$_id"},',
+                                               '"count":{"$sum": 1}}}, ',
+                                               '{"$match": {"count": {"$gt": 1}}}]'),
+                               options='{"allowDiskUse": true}')
+    if(isTRUE(result) && nrow(newdbls)==0) {
+      print('Succesfully removed doubles')
+      if(any(!attr(dbls$dates, 'tzone') %in% c('UTC',''))) {
+        print('Warning: dates will be cast to UTC')
+        print(paste0('There are ',sum(attr(dbls$dates, 'tzone')!='UTC'),' records with different timezones.'))
+        print(paste0('Unique ones are: ', paste0(unique(attr(dbls$dates, 'tzone')[attr(dbls$dates, 'tzone')!='UTC']), collapse = ', ')))
+      }
+      return(data.frame(ID=dbls$ID, date=do.call(c, lapply(dbls$dates, min))))
+    } else {
+      print('Warning: removal was attempted, but seems unsuccesfull. Returning as much information as posisble')
+      return(list(doubles=dbls, dateinfo=info, tryremove=rmvids, stillinDB=newdbls))
+    }
+  }
+} # Helper functions
+{ ## Initialize
+  # Restore from old state
+  if(exists('Step')) {
+    StepBU <- Step
+  } else {
+    src <- getSrcDirectory(function(x) {x})
+    if(src!='') setwd(src)
+    rm(src)
+    source(paste0(getwd(), '/SetLocal.r'))
+    libinstandload('readr','plyr','dplyr','lubridate','stringr','XML','rvest','oai','profvis','fastmatch',
+                   'RMongo','jsonlite','mongolite') #,'mvndeps')
+    #temp <- get_dependency_jar(group='org.mongodb', dep='mongodb-driver', version='3.0.4')
+    #temp <- get_dependency_jar(group='org.mongodb', dep='mongo-java-driver', version='3.0.4')
+    #temp <- list.files(gsub('/org/mongodb/.*', '/org/mongodb', temp), pattern='.*\\.jar$', T,T,T,T)
+    #file.copy(temp, paste0(.libPaths()[1],'/RMongo/java'))
+    Sys.setenv(TZ='UTC')
+    options(stringsAsFactors = T)
+  }
+  if(!exists('SubStep')) {SubStep <- 'Start'}
+  if(exists('Params') && !is.null(Params$cla)) {
+    Params <- list(cla=Params$cla, Resume=list())
+  } else {
+    Params <- list(Resume=list())
+    Params$cla=readNARCIScla()
+  }
+  
+} # Initialize
 
 # General settings:
-Params$harv <- 'didlmods'
-Params$NameOfHarv <- 'Dec17-test'
+Params$harv <- 'dc'
+Params$NameOfHarv <- '2018-02-01'
 Params$didlbeperkt <- T
 Params$mongoColl <- paste0('DirectFromNewHarvest_',Params$NameOfHarv)
 Step <- 'JustGo'
-Params$debug <- F
-resdate <- NULL
-Params$Summarize <- c()
-Params$reCalcIDs <- F # If true, summary is automatically produced as well
-Params$oldfdate <- as.POSIXct('2017-10-01', tz='UTC')
-Params$nfiles <- 50
+Step <- 'InitOnly'
+Params$debug <- T
+Params$WayBack <- as.POSIXct('2018-03-26 08:00:00', tz='UTC')
+Params$Summarize <- c('IDs') # Which summaries should be produced? 'Records' or 'IDs'/'alwaysIDs' (or combination). 'IDs' is ignored if no IDs are processed, 'alwaysIDs' is not.
 
-Paths$dumproot <- paste0(Paths$Dumps,'/',Params$NameOfHarv)
-Paths$dcXML<- paste0(Paths$dumproot, '/dcXML')
-Paths$didlmodsXML <- paste0(Paths$dumproot, '/didlmodsXML')
-Paths$Parsed <- paste0(Paths$dumproot, '/Chunk')
-Paths$IDdcXML <- paste0(Paths$dumproot, '/dcIDs')
-Paths$IDdidlmodsXML <- paste0(Paths$dumproot, '/didlIDs')
-
-# See what is available on disk
-RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Dumps,'/InputForNew'),
-                                       pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
-if(nrow(RDSfiles)==0) {
-  print('No old files found, creating new empty df')
-  saveRDS(data.frame(), file=paste0(Paths$Dumps,'/InputForNew/EmptyTotal (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  saveRDS(data.frame(), file=paste0(Paths$Dumps,'/InputForNew/EmptyIDlist (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  RDSfiles <- data.frame(name=list.files(path=paste0(Paths$Dumps,'/InputForNew'),
-                                         pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
-}
-RDSfiles$time <- file.mtime(RDSfiles$name)
-RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
-Paths$OldTotal <- RDSfiles$name[grepl('Total',RDSfiles$name)][1]
-Paths$oldID <- RDSfiles$name[grepl('IDlist',RDSfiles$name)][1]
-Paths$Summaries <- paste0(Paths$dumproot, '')   # Hier wordt nog params$harv aan toegevoegd
-Paths$Encoding <- 'UTF-8'
-Params$MaxAge <- 60 # Maximum age of files in days
-
-Params$urls$dcoaiurl <- 'http://oai.narcis.nl/oai'
-Params$urls$gmhoaiurl <- 'http://oai.gharvester.dans.knaw.nl'
-Params$urls$gmhformat <- 'nl_didl_combined'
-Params$filesize <- ifelse(Params$harv=='dc',200,100)
-
-if(Params$harv=='dc') {
-  Paths$XML <- Paths$dcXML
-  Paths$IDXML <- Paths$IDdcXML
-  Params$subdfs <- c('setSpec','GlobalIDs','ppl.creator','subject','subjectcode','format','source.meta','ppl.contributor',
-                     'isPartOf','relation','coverage')
-  Params$SetsSet <- c('dataset','oa_publication','publication','ec_fundedresources','openaire','thesis')
-} else if(Params$harv=='didlmods') {
-  Paths$XML <- Paths$didlmodsXML
-  Paths$IDXML <- Paths$IDdidlmodsXML
-  Params$subdfs <- c()
-  Params$SetsSet <- c()
-} else {
-  stop('Unknown format, Paths$XML <- unknown')
-}
-if(!dir.exists(Paths$XML)) {dir.create(Paths$XML, recursive = T)}
-if(!dir.exists(Paths$IDXML)) {dir.create(Paths$IDXML, recursive = T)}
-
-Params$tempvarnames <- c('endResTokens','i','j','l','lastfiles','lastResToken','longdelays','lastchecked',
-                         'moreFiles','mrfiles','m','n','o','rawfile','rawlen','startResTokens','totalerrors','newfiles','rms',
-                         'wrongi','wrong','parsed','ch','pRecs','xmlerrors','badstr','Rec','headatt',
-                         'orig','OneRecdf','names','longnames','commonname','Recdf','Deleteddf','ul',
-                         'ParsRecfiles','ParsDelfiles','fileborders','Deldf','Recnrs','FirstID','LastID',
-                         'colinnames','colsMand','RDSfiles','cols','Outdf','OutDel','x','CummTotals','namen','lengths','wrongrepl',
-                         'CorrErrors','NonDel','OneDeldf','Recs','extraIDs','fIDs',
-                         'extramatchlength','frommatch','matchlength','matchrange','rights')
-Params$keepvarnames <- c(as.character(lsf.str()), 'Paths','Params','resdate','Errors','Step','SubStep','mongo')
-Params$Reclsnames <- c("responseDate","request","ListRecords")
-Params$dateform <- c('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%OSZ', '%Y-%m-%d') # Caution: for some purposes, only first format is tried
-Params$RegExErrors <- c('<U\\+[A-F0-9]{4}>',                                  # e.g <U+12A4>
-                        '<([^>]*)<',                                          # e.g. <SomeKey="....", atrr=<AnotherKey?>. Replacement unsure
-                        '<dc:[A-Za-z]+></dc\\:[A-Za-z]+>[[:space:]]*',        # Empty dc-tags. Note this does nothing for didl-mods
-                        '((<dc:description>)|(<dc:title>))([^<>]*<[^<>:]*>)+[^<>]*((</dc:description>)|(</dc:title>))', # Only for dc: remove any tag-like text in description and title
-                        '(<dc:([A-Za-z]+)>[^<>]+</dc:\\2>)\\s*(\\1\\s*)+')    # Dubbelen
-Params$LastPath <- Paths$dumproot
-Paths$Summaries <- paste0(Paths$Summaries,'/',Params$harv)
-Paths$Parsed <- paste0(Paths$Parsed,Params$harv)
-if(!dir.exists(Paths$Summaries)) {dir.create(Paths$Summaries, recursive = T)}
-if(!dir.exists(Paths$Parsed)) {dir.create(Paths$Parsed, recursive = T)}
+{ ## Some more settings, not used too much
+  resdate <- NULL
+  Params$reCalcIDs <- F # Should IDs be processed (again)? If true, summary is automatically produced as well
+  Params$oldfdate <- as.POSIXct('2017-10-01', tz='UTC') # If this date is too early, ID-processing fails if records from after this date have disappeared
+  Params$nfiles <- 50
+  
+  Paths$dumproot <- paste0(Paths$Dumps,'/',Params$NameOfHarv)
+  Paths$dcXML<- paste0(Paths$dumproot, '/dcXML')
+  Paths$didlmodsXML <- paste0(Paths$dumproot, '/didlmodsXML')
+  Paths$Parsed <- paste0(Paths$dumproot, '/Chunk')
+  Paths$IDdcXML <- paste0(Paths$dumproot, '/dcIDs')
+  Paths$IDdidlmodsXML <- paste0(Paths$dumproot, '/didlIDs')
+  
+  # See what is available on disk
+  RDSfiles <- data.frame(name=list.files(path=Paths$BaseForNewHarvest,
+                                         pattern=paste0(Params$harv,'.*\\.(rds|RDS)'), full.name=T, ignore.case=T), stringsAsFactors = F)
+  if(nrow(RDSfiles)==0) {
+    print('No old files found, creating new empty df')
+    saveRDS(data.frame(), file=paste0(Paths$BaseForNewHarvest,'/EmptyTotal ',Params$harv,' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+    saveRDS(data.frame(), file=paste0(Paths$BaseForNewHarvest,'/EmptyIDlist ',Params$harv,' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+    RDSfiles <- data.frame(name=list.files(path=Paths$BaseForNewHarvest,
+                                           pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+  }
+  RDSfiles$time <- file.mtime(RDSfiles$name)
+  if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
+  RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
+  Paths$OldTotal <- RDSfiles$name[grepl(paste0('Total.*',Params$harv),RDSfiles$name, ignore.case=T)][1]
+  Paths$oldID <- RDSfiles$name[grepl(paste0('IDlist.*',Params$harv),RDSfiles$name, ignore.case=T)][1]
+  Paths$Summaries <- paste0(Paths$dumproot, '')   # Hier wordt nog params$harv aan toegevoegd
+  Paths$Encoding <- 'UTF-8'
+  Params$MaxAge <- ifelse(Params$debug, 730, 14) # Maximum age of files in days
+  
+  Params$urls$dcoaiurl <- 'http://oai.narcis.nl/oai'
+  Params$urls$gmhoaiurl <- 'http://oai.gharvester.dans.knaw.nl'
+  Params$urls$gmhformat <- 'nl_didl_combined'
+  Params$filesize <- ifelse(Params$harv=='dc',200,100)
+  Params$MaxMem <- 1e9
+  Params$JustMongo <- F
+  if(Params$JustMongo) Params$mongoColl <- 'nldidlnorm'
+  Params$MongoUser <- 'admin'
+  Params$MongoPswd <- 'admin'
+  Params$Mongoport <- 27017
+  
+} # Some more settings, not used too much
+{ ## Settings paths and static variables
+  
+  
+  if(Params$harv=='dc') {
+    Paths$XML <- Paths$dcXML
+    Paths$IDXML <- Paths$IDdcXML
+    Params$subdfs <- c('setSpec','GlobalIDs','ppl.creator','subject','subjectcode','format','source.meta','ppl.contributor',
+                       'isPartOf','relation','coverage')
+    Params$SetsSet <- c('dataset','oa_publication','publication','ec_fundedresources','openaire','thesis')
+  } else if(Params$harv=='didlmods') {
+    Paths$XML <- Paths$didlmodsXML
+    Paths$IDXML <- Paths$IDdidlmodsXML
+    Params$subdfs <- c()
+    Params$SetsSet <- c()
+  } else {
+    stop('Unknown format, Paths$XML <- unknown')
+  }
+  if(!dir.exists(Paths$XML)) {dir.create(Paths$XML, recursive = T)}
+  if(!dir.exists(Paths$IDXML)) {dir.create(Paths$IDXML, recursive = T)}
+  
+  Params$tempvarnames <- c('endResTokens','i','j','l','lastfiles','lastResToken','longdelays','lastchecked',
+                           'moreFiles','mrfiles','m','n','o','rawfile','rawlen','startResTokens','totalerrors','newfiles','rms',
+                           'wrongi','wrong','parsed','ch','pRecs','xmlerrors','badstr','Rec','headatt',
+                           'orig','OneRecdf','names','longnames','commonname','Recdf','Deleteddf','ul',
+                           'ParsRecfiles','ParsDelfiles','fileborders','Deldf','Recnrs','FirstID','LastID',
+                           'colinnames','colsMand','RDSfiles','cols','Outdf','OutDel','x','CummTotals','namen','lengths','wrongrepl',
+                           'CorrErrors','NonDel','OneDeldf','Recs','extraIDs','fIDs',
+                           'extramatchlength','frommatch','tomatch','matchlength','matchrange','rights')
+  Params$keepvarnames <- c(as.character(lsf.str()), 'Paths','Params','resdate','Errors','Step','SubStep','mongo','mlite')
+  Params$Reclsnames <- c("responseDate","request","ListRecords")
+  Params$dateform <- c('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%OSZ', '%Y-%m-%d') # Caution: for some purposes, only first format is tried
+  Params$RegExErrors <- c('<U\\+[A-F0-9]{4}>',                                  # e.g <U+12A4>
+                          '<([^>]*)<',                                          # e.g. <SomeKey="....", atrr=<AnotherKey?>. Replacement unsure
+                          '<dc:[A-Za-z]+></dc\\:[A-Za-z]+>[[:space:]]*',        # Empty dc-tags. Note this does nothing for didl-mods
+                          '((<dc:description>)|(<dc:title>))([^<>]*<[^<>:]*>)+[^<>]*((</dc:description>)|(</dc:title>))', # Only for dc: remove any tag-like text in description and title
+                          '(<dc:([A-Za-z]+)>[^<>]+</dc:\\2>)\\s*(\\1\\s*)+')    # Dubbelen
+  Params$MongoRegex <- '[^\\x{0000}-\\x{00FF}Ā-￮ ]+'
+  # Code points:
+  # ASCII
+  # 256-65518
+  
+  if(exists('Params') && !is.null(Params$LastPath) && Params$LastPath!=Paths$dumproot) stop('If path is changed, restart first!')
+  Params$LastPath <- Paths$dumproot
+  Paths$Summaries <- paste0(Paths$Summaries,'/',Params$harv)
+  Paths$Parsed <- paste0(Paths$Parsed,Params$harv)
+  if(!dir.exists(paste0(Paths$Summaries,'/Chunks'))) {dir.create(paste0(Paths$Summaries,'/Chunks'), recursive = T)}
+  if(!dir.exists(Paths$Parsed)) {dir.create(Paths$Parsed, recursive = T)}
+  
+} # Settings paths and static variables
 
 #Params$Resume$RecordParse <- 1
 
-if(Step=='JustGo') {
+if(Step=='JustGo' || Step=='InitOnly') {
+  print(paste0('Script started at ', format(Sys.time(), usetz = T)))
   if(Params$debug) print("Debugging mode")
-  if(exists('Total_New_Sets') && exists('Total_New_Sets_Cache')) {
-    print('First saving cached results dataframes')
-    for(i in Params$subdfs) {
-      if(nrow(Total_New_Sets[[i]])!=nrow(Total_New)) {
-        Total_New_Sets[[i]] <- rbind.fill(Total_New_Sets[[i]], Total_New_Sets_Cache[[i]])
-      }
-      if(!nrow(Total_New_Sets[[i]]) %in% c(nrow(Total_New), MetaOut$NoRecords)) {
-        stop('Unclear what values should be decached and which not')
-      }
-    }
-    rm(Total_New_Sets_Cache)
-    print('Finished deCaching')
-  }
-  if(exists('Total_New') && exists('Total_New_Cache')) {
-    print('First saving cached results raw list')
-    if(nrow(Total_New)<MetaOut$NoRecords && 
-       nrow(Total_New)+nrow(Total_New_Cache)>=MetaOut$NoRecords &&
-       !any(Total_New_Cache$ID %in% Total_New$ID)) {
-      Total_New <- rbind.fill(Total_New, Total_New_Cache)
-    }
-    if(nrow(Total_New)<MetaOut$NoRecords) {
-      stop('Warning: number of records seems corrupt')
-    }
-    rm(Total_New_Cache)
-    print('Finished deCaching')
-  }
-  if(exists('StepBU')) {
+  deCache(clean = F, checkTotal=F, save=F)
+  if(exists('StepBU') && Step!='InitOnly') {
     Step <- StepBU
     if(StepBU %in% c('harvnewRecs','SummariseRecords','ParseRecords','MergeRecords','Finalize','MakeIDfile')) {
       Params$Summarize <- Params$Summarize[Params$Summarize!='IDs']
@@ -139,10 +417,11 @@ if(Step=='JustGo') {
     if(StepBU %in% c('JustGo','harvIDs')) Step <- 'Start'
     rm(StepBU)
   } else {
-    RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+    RDSfiles <- data.frame(name=list.files(path=c(Paths$Summaries, paste0(Paths$Summaries, '/Chunks')),
+                                           pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
     RDSfiles$time <- file.mtime(RDSfiles$name)
     RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
-    #if(Params$debug) RDSfiles <- RDSfiles[-(1:6),]
+    if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
     temp <- difftime(Sys.time(), RDSfiles$time[grepl('oldIDs',RDSfiles$name)][1], units='days')<Params$MaxAge &&
       difftime(Sys.time(), RDSfiles$time[grepl('FileList IDFs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
       difftime(Sys.time(), RDSfiles$time[grepl('newIDs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
@@ -159,7 +438,7 @@ if(Step=='JustGo') {
          isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_New \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
         Total_New <- readRDS(RDSfiles$name[grepl('Total_New \\(temp',RDSfiles$name)][1])
       }
-      if(!exists('Total_Del') && !any(grepl('Total_N_Del',RDSfiles$name)) &&
+      if(!exists('Total_Del') && !any(grepl('Total_Del',RDSfiles$name)) &&
          isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_Del \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
         Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del \\(temp',RDSfiles$name)][1])
       }
@@ -170,21 +449,31 @@ if(Step=='JustGo') {
       if(!exists('MetaOut') && !any(grepl('Meta_Out',RDSfiles$name)) &&
          isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('MetaOut \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
         MetaOut <- readRDS(RDSfiles$name[grepl('MetaOut \\(temp',RDSfiles$name)][1])
+        if(!exists('Total_New') && any(grepl('Total_Part', RDSfiles$name))) {
+          Total_New <- data.frame()
+          Total_New_Cache <- data.frame()
+          Total_New_Sets <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
+          Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
+        }
+        if(!exists('Total_ID') && any(grepl('Total_ID',RDSfiles$name)) &&
+           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_ID \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
+          Total_ID <- readRDS(RDSfiles$name[grepl('Total_ID \\(temp',RDSfiles$name)][1])
+        }
       }
       resdate <- as.Date(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Never', 'Assumed', 'Unchanged','Disappeared'))],Sys.time())-86400)
       if(is.na(resdate) || !any(oldIDs$thisHarv)) {resdate <- NULL}
-      Step <- ifelse('IDs' %in% Params$Summarize,'showIDsumm','harvnewRecs')
+      if(Step!='InitOnly') Step <- ifelse('alwaysIDs' %in% Params$Summarize,'showIDsumm','harvnewRecs')
     } else {
-      Step <- 'Start'
+      if(Step!='InitOnly') Step <- 'Start'
     }
     if(exists('Errors') && Errors$UpToStep=='MergeRecords') {
       if(!exists('Total_New')) Total_New <- readRDS(RDSfiles$name[grepl('TotalNewNS',RDSfiles$name)][1])
       if(!exists('Total_New_Sets')) Total_New_Sets <- readRDS(RDSfiles$name[grepl('Total_N_Sets',RDSfiles$name)][1])
-      if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_N_Del',RDSfiles$name)][1])
+      if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del',RDSfiles$name)][1])
       if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
       if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
       print('Reading finished')
-      Step <- 'FinalizeMerge'
+      if(Step!='InitOnly') Step <- 'FinalizeMerge'
     }
     if(exists('Errors') && Errors$UpToStep=='Finalize') {
       if(!exists('NewTotal')) {
@@ -195,7 +484,7 @@ if(Step=='JustGo') {
       if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
       if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
       print('Reading finished')
-      Step <- 'MakeIDfile'
+      if(Step!='InitOnly') Step <- 'MakeIDfile'
     }
     rm(RDSfiles)
   }
@@ -216,6 +505,7 @@ if(Step=='harvIDs') {
   #Kijk eerst of dit of een hervatting is
   IDfiles <- data.frame(full=list.files(Paths$IDXML,full.names = T),stringsAsFactors = F)
   IDfiles$date <- file.mtime(IDfiles$full)
+  if(Params$debug) IDfiles <- IDfiles[IDfiles$date<Params$WayBack,]
   IDfiles <- IDfiles[order(IDfiles$date,decreasing = T),]
   if(nrow(IDfiles)>0) {
     lastfiles <- list(read_file(IDfiles$full[1]))
@@ -320,6 +610,7 @@ if(Step=='ProcIDs') {
       if (any(is.na(IDfiles$lastmod))) {
         print("Not all file-info read well!")
       }
+      if(Params$debug) IDfiles <- IDfiles[IDfiles$lastmod<Params$WayBack,]
       IDfiles <- IDfiles[order(IDfiles$lastmod),]
       IDfiles$ReqDelay <- NA
       IDfiles$ReqResTok <- NA
@@ -503,10 +794,9 @@ if(Step=='ProcIDs') {
       } # Kept for possible debuging dateformats
       oldIDs$inNew <- factor(x = ifelse(oldIDs$thisHarv, 'ToCheck', 'Never'), levels = c('Never','Deleted','Updated','Unchanged','Assumed','Disappeared','ToCheck','New'))  # Order is used when matching with oldIDs
       #if(Params$harv=='dc') {names(oldIDs)[names(oldIDs)=='LastDCUpdate'] <- 'LastUpdate'}
-      oldIDs$inNewNr[] <- NA
-      oldIDs$LastUpdate[] <- force_tz(oldIDs$LastUpdate, tz='UTC')
-      oldIDs$inNewTs <- as.POSIXct(rep('1902-01-01', times=nrow(oldIDs)), tz='UTC')
-      
+      oldIDs$inNewNr <- NA[nrow(oldIDs)>0]
+      oldIDs$LastUpdate <- force_tz(oldIDs$LastUpdate, tz='UTC')[nrow(oldIDs)>0]
+      oldIDs$inNewTs <- as.POSIXct(rep('1902-01-01', times=nrow(oldIDs)), tz='UTC')[nrow(oldIDs)>0]
       newIDs <- data.frame(ID=character(), del=logical(), ts=as.POSIXct(character(), tz='UTC'), file=numeric())
       # Opmerking: oldIDs hebben een nr-veld, maar dit zijn alleen de bestaande genummerd. Voor hier kijken we gewoon naar de index (which())
       Sys.setenv(TZ='UTC')
@@ -577,6 +867,7 @@ if(Step=='ProcIDs') {
         temp$inNew[temp$LastUpdate<temp$ts] <- 'Updated'
         temp$inNew[temp$LastUpdate==temp$ts & temp$inNew!='Never'] <- 'Unchanged'
         temp$inNew[temp$del & temp$inNew!='Never'] <- 'Deleted'
+        if(any(temp$inNew=='Never' & (!temp$del | temp$ts>temp$LastUpdate))) stop('Previously deleted file is now present again!')
         if(nrow(temp)!=0) {
           tempCacheidx <- (tempCacheidx+1):(tempCacheidx+nrow(temp))
           tempCacheVals$idx[tempCacheidx] <- temp$idx
@@ -657,15 +948,14 @@ if(Step=='ProcIDs') {
     oldIDs$inNew[c(frommatch, tomatch)] <- 'Unchanged'  
     
     oldIDs$inNewTs[oldIDs$inNewTs==as.POSIXct('1902-01-01', tz='UTC')] <- NA # This was a standard date. If it is still used, this means no replacement was found
-    
-    if(!any(tempRecsToCheck) && is.null(resdate)) {
-      print('All files have been checked. If any IDs have not been found, they have disappeared')
-      oldIDs$inNew[oldIDs$inNew=='ToCheck'] <- 'Disappeared'
-    }
     SubStep <- 'SaveFiles'
   }
   # Als deze stap incompleet is moeten problemen eerst worden opgelost
-  if(!all(oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'))) stop()
+  if(!all(oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'))) {
+    print('Warning: Some IDs seem to simply have disappeared')
+    Errors$Disappeared <- rbind.fill(Errors$Disappeared, oldIDs[!oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'),])
+    oldIDs$inNew[oldIDs$inNew=='ToCheck'] <- 'Disappeared'
+  }
   if(SubStep=='SaveFiles') {
     print('Saving results')
     saveRDS(oldIDs, paste0(Paths$Summaries,'/oldIDs (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
@@ -684,11 +974,12 @@ if(Step=='ProcIDs') {
     warning('End of processing IDs: Unexpected variables present')
     stop()
   } else {
-    resdate <- as.Date(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],Sys.time())-86400)
+    resdate <- as.Date(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
+                           ifelse(!all(is.na(oldIDs$LastUpdate)), max(oldIDs$LastUpdate),Sys.time()))-86400)
     if(is.na(resdate) || !any(oldIDs$thisHarv)) {resdate <- NULL}
     print(paste('Resuming harvest at date', resdate))
     rm(list=ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','IDfiles')])
-    Step <- ifelse('IDs' %in% Params$Summarize, 'showIDsumm', 'harvnewRecs')
+    Step <- ifelse(any(c('IDs','alwaysIDs') %in% Params$Summarize), 'showIDsumm', 'harvnewRecs')
   }
 }
 if(Step=='showIDsumm') {
@@ -712,12 +1003,12 @@ if(Step=='showIDsumm') {
     cnt$dataset <- NA
   }
   tstamps <- rbind(oldIDs[c('inNewTs','inNew')],data.frame(inNewTs=newIDs$ts, inNew=factor('New', levels=levels(oldIDs$inNew))))
-  libinstandload(ggplot2)
+  libinstandload('ggplot2')
   suppressWarnings({
     templimits <- c(as.POSIXct(min(newIDs$ts, 
                                    oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
                                    Sys.time(),
-                                   resdate)-86400), Sys.time())
+                                   as.POSIXct(resdate))-86400), Sys.time())
     tempbins <- 100
     print(ggplot(data=tstamps) +
             geom_histogram(aes(x=inNewTs, fill=inNew), breaks=as.numeric(c(templimits[1]+(0:tempbins*(templimits[2]-templimits[1])/tempbins)))) +
@@ -742,8 +1033,8 @@ if(Step=='showIDsumm') {
 }
 if(Step=='harvnewRecs') {
   # Check sanity and clean environment
-  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New',
-                           'Total_New_Sets','MetaOut','Total_Del','IDfiles')]
+  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New','Total_New_Cache','Total_ID',
+                           'Total_New_Sets','Total_New_Sets_Cache','MetaOut','Total_Del','IDfiles')]
   if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords') & !grepl('temp',rms)) ||
       any(!c('resdate','oldIDs','newIDs') %in% ls())) {
     warning('Environment doesn\'t seem to be what it should be to start harvesting new records')
@@ -754,6 +1045,7 @@ if(Step=='harvnewRecs') {
   newRecords <- F
   newfiles <- data.frame(full=list.files(Paths$XML,full.names = T),stringsAsFactors = F)
   newfiles$date <- file.mtime(newfiles$full)
+  if(Params$debug) newfiles <- newfiles[newfiles$date<Params$WayBack,]
   newfiles <- newfiles[order(newfiles$date,decreasing = T),]
   if(nrow(newfiles)>0) {
     lastfiles <- list(read_file(newfiles$full[1]))
@@ -778,7 +1070,7 @@ if(Step=='harvnewRecs') {
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
-                   format(100*Params$filesize*nrow(newfiles)/nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New')), digits=3),'%)'))
+                   format(100*Params$filesize*nrow(newfiles)/(nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))), digits=3),'%)'))
       dump <- list_records(Params$urls$dcoaiurl, as='raw', token=lastResToken, dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$dcoaiurl)$setSpec))
       rm(dump)
@@ -789,7 +1081,7 @@ if(Step=='harvnewRecs') {
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
-                   format(100*Params$filesize*nrow(newfiles)/nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New')), digits=3),'%)'))
+                   format(100*Params$filesize*nrow(newfiles)/(nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))), digits=3),'%)'))
       dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', token=lastResToken, dumper=dump_raw_to_txt, 
                            dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$gmhoaiurl)$setSpec))
@@ -836,6 +1128,7 @@ if(Step=='harvnewRecs') {
     if(!exists('Recfiles')) {
       RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='.*\\(temp\\).*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
       RDSfiles$time <- file.mtime(RDSfiles$name)
+      if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
       RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
       RDSfiles <- RDSfiles[grepl('RecFileList',RDSfiles$name),]
       if(nrow(RDSfiles)>0) {
@@ -855,7 +1148,8 @@ if(Step=='harvnewRecs') {
 if(Step=='SummariseRecords') {
   # Check sanity and clean environment
   rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','IDfiles')]
-  if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords','Total_New','Total_New_Sets','MetaOut','Total_Del') & !grepl('temp',rms)) ||
+  if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords','Total_New',
+                      'Total_New_Sets','MetaOut','Total_Del','Total_ID') & !grepl('temp',rms)) ||
       (exists('lastResToken') && !lastResToken %in% c('','Endfile')) ||
       any(!c('oldIDs','newIDs') %in% ls())) {
     warning('Environment doesn\'t seem to be what it should be to start summarizing records')
@@ -886,6 +1180,7 @@ if(Step=='SummariseRecords') {
     Recfiles <- data.frame(fullname=list.files(path=Paths$XML, full.names=T), encoding=factor(Paths$Encoding), row.names = NULL, stringsAsFactors = F)
     Recfiles$name <- gsub('.*/(oaidump.*\\.xml)','\\1',Recfiles$fullname)
     Recfiles$lastmod <- file.mtime(Recfiles$fullname)
+    if(Params$debug) Recfiles <- Recfiles[Recfiles$lastmod<Params$WayBack,]
     if (sum(is.na(Recfiles$lastmod))>0) {
       print("Not all file-info read well!")
     }
@@ -1134,8 +1429,8 @@ if(Step=='SummariseRecords') {
   # Recfiles$parsed <- F # Is dit nodig?
 }
 if(Step=='ParseRecords') {
-  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New',
-                           'Total_New_Sets','MetaOut','Total_Del','IDfiles')]
+  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New','Total_New_Cache',
+                           'Total_New_Sets','Total_New_Sets_Cache','MetaOut','Total_Del','IDfiles','Total_ID')]
   if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords') & !grepl('temp',rms)) ||
       (exists('lastResToken') && !lastResToken %in% c('','Endfile')) ||
       !Errors$UpToStep %in% c('SummariseRecords','ParseRecords','MergeRecords','Finalize') ||
@@ -1146,13 +1441,18 @@ if(Step=='ParseRecords') {
   
   if(is.null(Params$Resume$RecordParse)) {
     RDSfiles <- data.frame(name=list.files(path=Paths$Parsed, pattern='.*\\.(rds|RDS)', full.name=F), stringsAsFactors = F)
+    if(Params$debug) {
+      RDSfiles$time <- file.mtime(paste0(Paths$Parsed,'/',RDSfiles$name))
+      RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
+      RDSfiles$time <- NULL
+    }
     if(nrow(RDSfiles)==0) {
       Params$Resume$RecordParse <- 0
       if(!dir.exists(Paths$Parsed)) {dir.create(Paths$Parsed, recursive=T)}
     } else {
       RDSfiles$time <- file.mtime(paste0(Paths$Parsed,'/',RDSfiles$name))
+      if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
       RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
-      #if(Params$debug) RDSfiles <- RDSfiles[166:1341,]
       #Check how far we've come
       Recnrs <- RDSfiles$name[grepl('^RecsUpToFile.*',RDSfiles$name)]
       Recnrs <- as.numeric(substring(Recnrs,13,regexpr('[^A-Za-z0-9]+',Recnrs)-1))
@@ -1389,7 +1689,23 @@ if(Step=='ParseRecords') {
             stringsAsFactors=F
           )
           ul <- lapply(OneRecdf$norm, unlist)
-          OneRecdf$DAI <- lapply(ul, function(x) {
+          if(Params$debug) stop('Debug-DAI')
+          OneRecdf$DAI <- lapply(OneRecdf$norm, function(x) {
+            auts <- x$Item$Component$Resource$mods
+            auts <- auts[names(auts)=='name']
+            return(lapply(auts, function(a) {
+              DAIs <- sapply(a[names(a)=='nameIdentifier'], function(id) {
+                if('info:eu-repo/dai/nl' %in% id$.attrs) {
+                  return(id$text)
+                } else {
+                  return(NA)
+                }
+              })
+              DAIs <- DAIs[!is.na(DAIs)]
+              if(length(DAIs)==0) return(NA) else return(DAIs)
+            }))
+            
+            
             idcs <- which(x=='dai-nl')-1
             idcs <- idcs-ifelse(x[idcs+2]=='info:eu-repo/dai/nl',0,1)
             namech <- names(x[rep(idcs, each=3)+0:2])
@@ -1401,7 +1717,7 @@ if(Step=='ParseRecords') {
               idcs <- 1:length(idcs)*3-2
               namech <- names(x[rep(idcs, each=3)+0:2])
               namech <- substring(namech,c(34,56,56),99999)
-            } # Putting individual names in alphabetical order, and discarding non-dai info
+            } # Putting individual labelnames in alphabetical order, and discarding non-dai info
             if(any(namech!=c('.nameIdentifier.text','.type','.typeURI')) ||
                any(x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl'))) {
               if(any(namech!=c('.nameIdentifier.text','.type','.typeURI'))) {
@@ -1495,9 +1811,10 @@ if(Step=='ParseRecords') {
   }
   Step <- 'MergeRecords'
 }
+stop('Debug')
 if(Step=='MergeRecords') {
-  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New',
-                           'Total_New_Sets','MetaOut','Total_Del', 'IDfiles')]
+  rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New','Total_New_Cache',
+                           'Total_New_Sets','Total_New_Sets_Cache','MetaOut','Total_Del', 'IDfiles','Total_ID')]
   if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords') & !grepl('temp',rms)) ||
       (exists('lastResToken') && !lastResToken %in% c('','Endfile')) ||
       !Errors$UpToStep %in% c('ParseRecords','MergeRecords','Finalize') ||
@@ -1507,50 +1824,55 @@ if(Step=='MergeRecords') {
   } else rm(list=rms)
   
   print('Start merging step, first reading file info')
-  ParsRecfiles <- data.frame(fullname=list.files(path=Paths$Parsed, pattern='^Rec.*', recursive = T,full.names = T),stringsAsFactors = F)
-  ParsRecfiles$name <- gsub('.*/','',ParsRecfiles$fullname)
-  ParsRecfiles$lastmod <- file.mtime(ParsRecfiles$fullname)
-  ParsRecfiles <- ParsRecfiles[order(ParsRecfiles$lastmod),]
-  ParsRecfiles$version <- (ParsRecfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
-  
-  ParsDelfiles <- data.frame(fullname=list.files(path=Paths$Parsed, pattern='^Deleted.*', recursive = T,full.names = T),stringsAsFactors = F)
-  ParsDelfiles$name <- gsub('.*/','',ParsDelfiles$fullname)
-  ParsDelfiles$lastmod <- file.mtime(ParsDelfiles$fullname)
-  ParsDelfiles <- ParsDelfiles[order(ParsDelfiles$lastmod),]
-  ParsDelfiles$version <- (ParsDelfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
-  
-  fileborders <- str_extract(as.character(ParsRecfiles$name),'File\\s*[0-9]*')
-  if(!all(fileborders==str_extract(as.character(ParsDelfiles$name),'File\\s*[0-9]*'))||
-     !all(ParsRecfiles$version==ParsDelfiles$version)){
-    print("ParsRecfiles and ParsDelfiles mismatch, check first")
-    stop()
+  {
+    if(Params$harv=='didlmods') {
+      mongo <- OpenMongo('NARCIS', dockername = Params$mongoColl, imagename='mongo', preOnly = T, quiet=T, port=Params$Mongoport)
+    }
+    
+    ParsRecfiles <- data.frame(fullname=list.files(path=Paths$Parsed, pattern='^Rec.*', recursive = T,full.names = T),stringsAsFactors = F)
+    ParsRecfiles$name <- gsub('.*/','',ParsRecfiles$fullname)
+    ParsRecfiles$lastmod <- file.mtime(ParsRecfiles$fullname)
+    if(Params$debug) ParsRecfiles <- ParsRecfiles[ParsRecfiles$lastmod<Params$WayBack,]
+    ParsRecfiles <- ParsRecfiles[order(ParsRecfiles$lastmod),]
+    ParsRecfiles$version <- (ParsRecfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
+    
+    ParsDelfiles <- data.frame(fullname=list.files(path=Paths$Parsed, pattern='^Deleted.*', recursive = T,full.names = T),stringsAsFactors = F)
+    ParsDelfiles$name <- gsub('.*/','',ParsDelfiles$fullname)
+    ParsDelfiles$lastmod <- file.mtime(ParsDelfiles$fullname)
+    if(Params$debug) ParsDelfiles <- ParsDelfiles[ParsDelfiles$lastmod<Params$WayBack,]
+    ParsDelfiles <- ParsDelfiles[order(ParsDelfiles$lastmod),]
+    ParsDelfiles$version <- (ParsDelfiles$lastmod > as.POSIXct('2099-12-30 10:30:00'))+1
+    
+    fileborders <- str_extract(as.character(ParsRecfiles$name),'File\\s*[0-9]*')
+    if(!all(fileborders==str_extract(as.character(ParsDelfiles$name),'File\\s*[0-9]*'))||
+       !all(ParsRecfiles$version==ParsDelfiles$version)){
+      print("ParsRecfiles and ParsDelfiles mismatch, check first")
+      stop()
+    }
+    fileborders <- as.numeric(str_extract(fileborders,'[0-9]+'))
+    ParsRecfiles <- ParsRecfiles[!duplicated(fileborders, fromLast = T),]
+    ParsDelfiles <- ParsDelfiles[!duplicated(fileborders, fromLast = T),]
+    fileborders <- fileborders[!duplicated(fileborders, fromLast = T)]
+    ParsRecfiles <- ParsRecfiles[order(fileborders),]
+    ParsDelfiles <- ParsDelfiles[order(fileborders),]
+    fileborders <- c(0,fileborders[order(fileborders)])
+    ParsRecfiles$from <- ParsDelfiles$from <- fileborders[1:length(fileborders)-1]+1
+    ParsRecfiles$to <- ParsDelfiles$to <- fileborders[2:length(fileborders)]
+    
+    row.names(ParsRecfiles) <- 1:nrow(ParsRecfiles)
+    row.names(ParsDelfiles) <- 1:nrow(ParsDelfiles)
   }
-  fileborders <- as.numeric(str_extract(fileborders,'[0-9]+'))
-  ParsRecfiles <- ParsRecfiles[!duplicated(fileborders, fromLast = T),]
-  ParsDelfiles <- ParsDelfiles[!duplicated(fileborders, fromLast = T),]
-  fileborders <- fileborders[!duplicated(fileborders, fromLast = T)]
-  ParsRecfiles <- ParsRecfiles[order(fileborders),]
-  ParsDelfiles <- ParsDelfiles[order(fileborders),]
-  fileborders <- c(0,fileborders[order(fileborders)])
-  ParsRecfiles$from <- ParsDelfiles$from <- fileborders[1:length(fileborders)-1]+1
-  ParsRecfiles$to <- ParsDelfiles$to <- fileborders[2:length(fileborders)]
-  
-  row.names(ParsRecfiles) <- 1:nrow(ParsRecfiles)
-  row.names(ParsDelfiles) <- 1:nrow(ParsDelfiles)
-  
-  if(Params$harv=='didlmods') mongo <- mongoDbConnect('NARCIS')
   if(is.null(Params$Resume$RecordMerge)) {
     if(exists('Total_New') && !is.null(Errors$skippedFiles) && !is.null(Errors$RecMerge)) {
       #Het zou zo moeten zijn dat Total_new totaal aantal regels gelijk is aan een aantal Records in Recfiles[1:50X]
       print('Start calculating how far we\'ve already come')
-      CummTotals <- sapply(1:nrow(Recfiles[-c(Errors$skippedFiles,999999)]), function(n) {
-        sum(Recfiles$NoRecords[-c(Errors$skippedFiles,999999)][1:n])
-      })
+      CummTotals <- cumsum(Recfiles$NoRecords[-c(Errors$skippedFiles,999999)])
       print('Calculating complete, filling dfs')
-      if(MetaOut$NoRecords==CummTotals[fileborders[MetaOut$MergedUpTo+1]] && ParsRecfiles$to[MetaOut$MergedUpTo] %in% Recfiles$nr[-c(Errors$skippedFiles,999999)][CummTotals==MetaOut$NoRecords]) {
+      if(MetaOut$NoRecords==CummTotals[fileborders[MetaOut$MergedUpTo+1]] && 
+         ParsRecfiles$to[MetaOut$MergedUpTo] %in% Recfiles$nr[-c(Errors$skippedFiles,999999)][CummTotals==MetaOut$NoRecords]) {
         Params$Resume$RecordMerge <- ParsRecfiles$to[MetaOut$MergedUpTo]
       }
-      if(is.null(Params$Resume$RecordMerge) || is.na(Params$Resume$RecordMerge) || !Params$Resume$RecordMerge %in% fileborders) {
+      if(is.null(Params$Resume$RecordMerge) || is.na(Params$Resume$RecordMerge) || !Params$Resume$RecordMerge %in% fileborders || MetaOut$NoRecords==0) {
         readline('Restarting. Continue?')
         Params$Resume$RecordMerge <- 1
       } else {
@@ -1560,23 +1882,70 @@ if(Step=='MergeRecords') {
       Params$Resume$RecordMerge <- 1
     }
   }
+  if(Params$harv=='didlmods') {
+    mongo <- OpenMongo('NARCIS', dockername = Params$mongoColl, quiet=T, port=Params$Mongoport)
+    if(F) mlite <- mongo(collection=Params$mongoColl, db='NARCIS', url=paste0('mongodb://',Params$MongoUser,':',Params$MongoPswd,'@localhost:',Params$Mongoport))
+    if(T) mlite <- mongo(collection=Params$mongoColl, db='NARCIS', url=paste0('mongodb://localhost:',Params$Mongoport))
+    print('Connected to MongoDB')
+  } # Connect to Mongo
   if(Params$Resume$RecordMerge!=1) {
-    if(nrow(Total_New)>MetaOut$NoRecords) Total_New <- Total_New[1:MetaOut$NoRecords,]
+    print('Pruning R-dataframes of extra records')
+    if(nrow(Total_New)+MetaOut$NoSaved>MetaOut$NoRecords) Total_New <- Total_New[1:(MetaOut$NoRecords-MetaOut$NoSaved),]
+    if(length(Total_ID)>MetaOut$NoRecords) Total_ID <- Total_ID[1:MetaOut$NoRecords]
     Total_New_Sets <- sapply(Params$subdfs, function (x) {
-      if(nrow(Total_New_Sets[[x]])!=MetaOut$NoRecords) {
-        Total_New_Sets[[x]][1:MetaOut$NoRecords,]
+      if(nrow(Total_New_Sets[[x]])+MetaOut$NoSaved!=MetaOut$NoRecords) {
+        Total_New_Sets[[x]][1:(MetaOut$NoRecords-MetaOut$NoSaved),]
       } else {
         Total_New_Sets[[x]]
       }
     })
+    Total_Del <- Total_Del[Total_Del$filenr<ParsRecfiles$from[Params$Resume$RecordMerge],]
     Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
     Total_New_Cache <- data.frame()
     MetaOut$NoAltered <- MetaOut$NoAltered[1:(Params$Resume$RecordMerge-1),]
-    if(dbRemoveQuery(mongo, Params$mongoColl, paste0('{ID: {$nin: ["',paste0(Total_New$ID, collapse = '", "'),'"]}}'))!='ok' || 
-       nrow(dbGetQuery(mongo, Params$mongoColl, '{}',skip=max(0,MetaOut$NoRecords-50), limit=MetaOut$NoRecords+100))!=min(MetaOut$NoRecords,50)) {
-      stop('Cleaning DB unsuccesful')
+    if(Params$harv=='didlmods' && mlite$count()>MetaOut$NoRecords) {
+      print('Removing extra records from mongo')
+      tempmonqry <- simplify2array(mlite$find(fields='{"_id": 0, "ID":true}', skip=0, limit=2e9)$ID)
+      if(length(tempmonqry)>MetaOut$NoRecords+50000) {
+        temp <- readline(prompt=paste0('Warning: About to remove a lot of rows (',
+                                       ifelse(nrow(tempmonqry)>2e5-1, '200000 or more', nrow(tempmonqry)),
+                                       '). Continue (y/n)?'))
+        if(temp!='y') stop('Operation aborted (cleaning DB)')
+      }
+      print('Querying mongo complete')
+      temprmv <- !(tempmonqry %in% Total_ID[1:(MetaOut$NoRecords)])
+      if(any(temprmv[1:MetaOut$NoRecords])) {
+        stop('Unclear what records should be deleted from DB')
+      } else if(length(temprmv)>MetaOut$NoRecords && 
+          !all(temprmv[(MetaOut$NoRecords+1):length(temprmv)])) {
+        print('Complication: there are doubled records. Doing careful removal.')
+        tempdbldate <- min(Recfiles$lastmod-120)
+        tempmonqry <- mlite$find(fields='{"_id": true, "ID":true, "date_harv":true}',
+                     skip=MetaOut$NoRecords, limit=2e9)
+        tempmonqry$date_harv <- sapply(tempmonqry$date_harv, as.POSIXct, tz='UTC')
+        if(any(tempmonqry$date_harv<tempdbldate)) stop('Double records from before first datestamp')
+        if(any(sapply(1:(((nrow(tempmonqry)-1) %/% 1000)+1), function(n) {
+          # This is more unreadable, because we can't just specify a value: it needs an ObjectId. Example of a correct query:
+          # {_id: {$in: [{'$oid': '5a699eaa77c858ea1a3f67ed'}, {'$oid': '5a699eaa77c858ea1a3f67ee'}]}}
+          dbRemoveQuery(mongo, Params$mongoColl, paste0('{_id: {$in: [{\'$oid\': \'',paste0(
+            tempmonqry$`_id`[(1000*(n-1)+1):min(1000*n, nrow(tempmonqry))], collapse = '\'}, {\'$oid\': \''),'\'}]}}'))
+        })!='ok') ||
+        mlite$count()!=MetaOut$NoRecords) {
+          stop('Cleaning DB unsuccesful.')
+        }
+      } else {
+        print('And computed which ones should be removed')
+        if(any(temprmv) &&
+           any(sapply(1:(((sum(temprmv)-1)%/%1000) +1), function(n) {
+             dbRemoveQuery(mongo, Params$mongoColl, paste0('{ID: {$in: ["',paste0(tempmonqry[temprmv][(1000*(n-1)+1):min(1000*n, sum(temprmv))], collapse = '", "'),'"]}}'))
+           })!='ok') ||
+           mlite$count()!=MetaOut$NoRecords) {
+          stop('Cleaning DB unsuccesful.')
+        }
+      }
+      print('Removing extra records from mongo completed')
     }
-    temprmv <- !Errors$RecMerge$ID %in% Total_New$ID
+    temprmv <- Errors$RecMerge$filenr>ParsRecfiles$to[Params$Resume$RecordMerge]
     if(any(temprmv) && any(!temprmv) && which(temprmv)[1]<max(which(!temprmv))) { # The any(!temprmv) is to prevent warning from max(NULL)
       warning('There are some IDs in Errors$RecMerge which are not in Total_New, but they are not all at the end')
       stop()
@@ -1591,21 +1960,30 @@ if(Step=='MergeRecords') {
     }
   } else {
     Errors$skippedFiles <- numeric()
-    Errors$RecMerge <- data.frame(ID=character(),descr=factor(),bad=factor(), repl=factor(), stringsAsFactors = F)
+    Errors$RecMerge <- data.frame(ID=character(),filenr=numeric(), descr=factor(),bad=factor(), repl=factor(), stringsAsFactors = F)
     Errors$ColumnsSkipped <- data.frame(filename=character(), columnname=character(), nofilled=numeric(), stringsAsFactors = F)
     Errors$count <- nrow(Errors$longdelays) + nrow(Errors$MultiIDs) + nrow(Errors$RecSumm) + nrow(Errors$RecParse)
-    MetaOut <- list(NoAltered=data.frame(True=integer(), False=integer()), MergedUpTo=0, NoRecords=0, NoDeleted=0)
+    MetaOut <- list(NoAltered=data.frame(True=integer(), False=integer()), MergedUpTo=0, NoRecords=0, NoDeleted=0, NoSaved=0)
+    Total_ID <- character(0)
     Total_New <- data.frame()
     Total_New_Cache <- data.frame()
     Total_New_Sets <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
     Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
     Total_Del <- data.frame()
-    if(dbRemoveQuery(mongo, Params$mongoColl, '{}')!='ok' || 
-       nrow(dbGetQuery(mongo, Params$mongoColl, '{}'))>0) {
-      stop('Cleaning DB unsuccesful')
+    if(Params$harv=='didlmods') {
+      if(mlite$count()>0) {
+        print(paste0('Warning: About to remove all content of mongo-databse (',
+                     Params$mongoColl, ', containing ',mlite$count(), ' records).'))
+        temp <- readline(prompt='Are you sure you want to continue (y/n)? ')
+        if(temp!='y') stop('Operation aborted (cleaning DB)')
+      }
+      if(dbRemoveQuery(mongo, Params$mongoColl, '{}')!='ok' || 
+         nrow(dbGetQuery(mongo, Params$mongoColl, '{}'))>0) {
+        stop('Cleaning DB unsuccesful')
+      }
     }
   }
-  print(paste0('Start real merging process from file ',Params$Resume$RecordMerge, ' (of ',nrow(ParsRecfiles),')'))
+  print(paste0('Start real merging process from record ',MetaOut$NoRecords+1, ' / file ',Params$Resume$RecordMerge, ' (of ',nrow(ParsRecfiles),') (',Sys.time(),')'))
   if(Params$Resume$RecordMerge<=nrow(ParsRecfiles)) {
     for (n in Params$Resume$RecordMerge:nrow(ParsRecfiles)) {
       Recdf <- readRDS(ParsRecfiles$fullname[n])
@@ -1758,6 +2136,7 @@ if(Step=='MergeRecords') {
       }
       if ((nrow(Recdf)>0)&& !(n %in% Errors$skippedFiles) && Params$harv=='dc') {
         Outdf <- data.frame(ID=as.character(Recdf[,colinnames[1]]),stringsAsFactors = F)
+        Outdf$filenr <- Recdf[,grepl(colinnames[28],colnames(Recdf))]
         Outdf$date.header <- as.POSIXct(Recdf[,colinnames[2]], format=Params$dateform[1], tz='UTC')
         if(any(is.na(Outdf$date.header))) {
           Outdf$date.header[is.na(Outdf$date.header)] <-
@@ -1843,6 +2222,7 @@ if(Step=='MergeRecords') {
           print("Not alle origindates interpretable as date")
           Errors$count <- Errors$count+sum(is.na(Outdf$date.orig))
           Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[is.na(Outdf$date.orig)],
+                                                                    filenr=Outdf$filenr[is.na(Outdf$date.orig)],
                                                                     descr='Bad Origindate',
                                                                     bad=Outdf[is.na(Outdf$date.orig), colinnames[14]],
                                                                     repl='NA'))
@@ -1854,6 +2234,7 @@ if(Step=='MergeRecords') {
         if(any(tempdupl)) {
           Errors$count <- Errors$count+sum(tempdupl)
           Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[tempdupl],
+                                                                    filenr=Outdf$filenr[tempdupl],
                                                                     descr='Duplicate authors/creators',
                                                                     bad=apply(Outdf$ppl.creator[tempdupl,],1,function(x) {
                                                                       paste(x[!is.na(x)&duplicated(x)],collapse='; ')}),
@@ -1868,6 +2249,7 @@ if(Step=='MergeRecords') {
         if(any(tempdupl)) {
           Errors$count <- Errors$count+sum(tempdupl)
           Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[tempdupl],
+                                                                    filenr=Outdf$filenr[tempdupl],
                                                                     descr='Duplicate subjects',
                                                                     bad=apply(Outdf$subject[tempdupl,],1,function(x) {
                                                                       paste(x[!is.na(x)&duplicated(x)],collapse='; ')}),
@@ -1890,6 +2272,7 @@ if(Step=='MergeRecords') {
         if(any(tempincompl)) {
           Errors$count <- Errors$count+sum(tempincompl)
           Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[tempincompl],
+                                                                    filenr=Outdf$filenr[tempincompl],
                                                                     descr='Non-parseable metadata-date',
                                                                     bad=Outdf$date.meta.text[tempincompl],
                                                                     repl='NA'))
@@ -1938,6 +2321,8 @@ if(Step=='MergeRecords') {
         #Add to Total_new
         cols <- colnames(Outdf) %in% Params$subdfs
         Total_New <- rbind.fill(Total_New, Outdf[,!cols])
+        Total_ID <- c(Total_ID, Outdf$ID)
+        
         for (i in Params$subdfs) {
           if(ncol(Outdf[[i]])>101) {
             warning(paste0('MergeRecords is collapsing variables, this should already have been done by ParseRecords',
@@ -1981,8 +2366,9 @@ if(Step=='MergeRecords') {
                                                                                 nofilled=sum(!is.na(Recdf[,tempcolsskip]))))
         }
       }
-      if ((nrow(Recdf)>0)&& !(n %in% Errors$skippedFiles) && Params$harv=='didlmods') {
+      if ((nrow(Recdf)>0)&& !(n %in% Errors$skippedFiles) && Params$harv=='didlmods' && !Params$JustMongo) {
         Outdf <- data.frame(ID=as.character(Recdf[,colinnames[1]]),stringsAsFactors = F)
+        Outdf$filenr <- Recdf[,colinnames[17]]
         Outdf$date.header <- as.POSIXct(Recdf[,colinnames[2]], format=Params$dateform[1], tz='UTC')
         if(any(is.na(Outdf$date.header))) {
           Outdf$date.header[is.na(Outdf$date.header)] <-
@@ -1997,6 +2383,7 @@ if(Step=='MergeRecords') {
             print("Not alle origindates interpretable as date")
             Errors$count <- Errors$count+sum(is.na(Outdf$date.header))
             Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[is.na(Outdf$date.header)],
+                                                                      filenr=Outdf$filenr[is.na(Outdf$date.header)],
                                                                       descr='Bad Origindate',
                                                                       bad=Recdf[is.na(Outdf$date.header), colinnames[2]],
                                                                       repl='NA'))
@@ -2016,6 +2403,7 @@ if(Step=='MergeRecords') {
             print("Not alle origindates interpretable as date")
             Errors$count <- Errors$count+sum(is.na(Outdf$date.harv))
             Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[is.na(Outdf$date.harv)],
+                                                                      filenr=Outdf$filenr[is.na(Outdf$date.harv)],
                                                                       descr='Bad Origindate',
                                                                       bad=Recdf[is.na(Outdf$date.harv), colinnames[3]],
                                                                       repl='NA'))
@@ -2035,6 +2423,7 @@ if(Step=='MergeRecords') {
             print("Not alle origindates interpretable as date")
             Errors$count <- Errors$count+sum(is.na(Outdf$date.orig))
             Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(ID=Outdf$ID[is.na(Outdf$date.orig)],
+                                                                      filenr=Outdf$filenr[is.na(Outdf$date.orig)],
                                                                       descr='Bad Origindate',
                                                                       bad=Recdf[is.na(Outdf$date.orig), colinnames[11]],
                                                                       repl='NA'))
@@ -2059,7 +2448,7 @@ if(Step=='MergeRecords') {
           if(any(grepl('Closed.?Access', x, ignore.case = T))) {tempClosed <- T} else {tempClosed <- F}
           if(any(grepl('Embargoed.?Access', x, ignore.case = T))) {tempEmbargo <- T} else {tempEmbargo <- F}
           if(tempOpen+tempClosed+tempEmbargo>1) {
-            print("Record is Open/closed/embargoed at the same time")
+            #print("Record is Open/closed/embargoed at the same time")
             return(Params$Conflictdesr)
           }
           if(tempOpen) {return('Open')}
@@ -2070,6 +2459,7 @@ if(Step=='MergeRecords') {
         if(any(Outdf$access==Params$Conflictdesr)) {
           Errors$RecMerge <- rbind.fill(Errors$RecMerge, data.frame(
             ID=Outdf$ID[Outdf$access==Params$Conflictdesr],
+            filenr=Outdf$filenr[Outdf$access==Params$Conflictdesr],
             descr="Record is Open/closed/embargoed at the same time",
             bad=I(rights[Outdf$access==Params$Conflictdesr]),
             repl='Other:conflicting'
@@ -2080,7 +2470,6 @@ if(Step=='MergeRecords') {
                                                                  False=sum(Recdf[,colinnames[8]]=='false')))
         MetaOut$origin <- unique(rbind.fill(MetaOut$origin, data.frame(baseURL=Recdf[,grep(colinnames[9],colnames(Recdf))],
                                                                        NameSp=Recdf[,grep(colinnames[12],colnames(Recdf))])))
-        Outdf$filenr <- Recdf[,colinnames[17]]
         Outdf$DAI <- Recdf[,colinnames[13]]
         Outdf$Journal <- Recdf[,colinnames[14]]
         Outdf$Keywords <- Recdf[,colinnames[15]]
@@ -2089,17 +2478,24 @@ if(Step=='MergeRecords') {
         
         #Add to Total_new and MongoDB
         Total_New_Cache <- rbind.fill(Total_New_Cache, Outdf)
-        
-        tempBU_Outdf <- Outdf
-        Outdf <- tempBU_Outdf
         if(Params$didlbeperkt) Outdf$nldidlnorm <- Recdf[,colinnames[7]]
         Outdf <- lapply(split(Outdf, 1:nrow(Outdf)), as.list)
         names(Outdf) <- NULL
         
         Outdf <- adjustnestednames(Outdf, gsub, pattern='\\.', replacement='_')
-        
         if(!all(lapply(Outdf, function(x) {
-          dbInsertDocument(mongo, Params$mongoColl, gsub('\\.([0-9])+','\\1',as.character(jsonlite::toJSON(x, POSIXt = 'mongo', raw='mongo'))))
+          if(any(unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T)))) {
+            Errors$RecMerge <<- rbind.fill(Errors$RecMerge, data.frame(
+              ID=x$ID,
+              filenr=x$filenr,
+              descr="Record contains Non-standard characters",
+              bad=unname(paste0(names(which(unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T)))),': ', 
+                         unlist(x)[unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T))])),
+              repl=gsub(Params$MongoRegex,'',unlist(x)[unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T))], perl=T)
+            ))
+            x <- simple_rapply(x, gsub, pattern=Params$MongoRegex, replacement='', perl=T, classes = c('character', 'factor'))
+          }
+          dbInsertDocument(mongo, Params$mongoColl, gsub('\\.([0-9]+)','\\1',as.character(jsonlite::toJSON(x, POSIXt = 'mongo', raw='mongo'))))
         })=='ok')) {
           stop('Error in insertion to MongoDB')
         }
@@ -2107,7 +2503,7 @@ if(Step=='MergeRecords') {
         
         print(paste0("Records from file ",n," parsed (",length(Outdf),") (",Sys.time(),")"))
         MetaOut$NoRecords <- MetaOut$NoRecords+length(Outdf)
-        if(nrow(Total_New)+nrow(Total_New_Cache)!=MetaOut$NoRecords || MetaOut$MergedUpTo!=n-1) {
+        if(nrow(Total_New)+nrow(Total_New_Cache)!=MetaOut$NoRecords-MetaOut$NoSaved || MetaOut$MergedUpTo!=n-1) {
           stop('Merging failed: number of records unclear')
         }
         
@@ -2119,6 +2515,34 @@ if(Step=='MergeRecords') {
                                                                                 columnname=tempcolsskip,
                                                                                 nofilled=sum(!is.na(Recdf[,tempcolsskip]))))
         }
+      }
+      if ((nrow(Recdf)>0)&& !(n %in% Errors$skippedFiles) && Params$harv=='didlmods' && Params$JustMongo) {
+        Outdf <- data.frame(ID=as.character(Recdf[,colinnames[1]]),stringsAsFactors = F)
+        Outdf$setSpec <- lapply(unname(split(Recdf[grep(x =  colnames(Recdf), pattern = colinnames[4], ignore.case = T)],1:nrow(Recdf))), function(x) {
+          unname(x[!is.na(x)])
+        })
+        Outdf$nldidlnorm <- Recdf[,colinnames[7]]
+        Outdf <- lapply(split(Outdf, 1:nrow(Outdf)), as.list)
+        names(Outdf) <- NULL
+        
+        Outdf <- adjustnestednames(Outdf, gsub, pattern='\\.', replacement='_')
+        if(!all(lapply(Outdf, function(x) {
+          if(any(unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T)))) {
+            Errors$RecMerge <<- rbind.fill(Errors$RecMerge, data.frame(
+              ID=x$ID,
+              filenr=NA,
+              descr="Record contains Non-standard characters",
+              bad=unname(paste0(names(which(unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T)))),': ', 
+                                unlist(x)[unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T))])),
+              repl=gsub(Params$MongoRegex,'',unlist(x)[unlist(simple_rapply(x, grepl, pattern=Params$MongoRegex, perl=T))], perl=T)
+            ))
+            x <- simple_rapply(x, gsub, pattern=Params$MongoRegex, replace='', perl=T, classes = c('character','factor'))
+          }
+          dbInsertDocument(mongo, Params$mongoColl, gsub('\\.([0-9])+','\\1',as.character(jsonlite::toJSON(x, POSIXt = 'mongo', raw='mongo'))))
+        })=='ok')) {
+          stop('Error in insertion to MongoDB')
+        }
+        print(paste0("Records from file ",n," parsed (",length(Outdf),") (",Sys.time(),")"))
       }
       if ((nrow(Recdf)==0)||(n %in% Errors$skippedFiles)) {
         MetaOut$NoAltered <- rbind(MetaOut$NoAltered, data.frame(True=0,
@@ -2134,32 +2558,19 @@ if(Step=='MergeRecords') {
         print(paste("File",n,"skipped"))
       }
       MetaOut$MergedUpTo <- MetaOut$MergedUpTo+1
-      if((n %% 10 == 0) && nrow(Total_New_Cache)>0 || (length(Total_New_Sets)>0 && nrow(Total_New_Sets_Cache[[1]])>0)) {
-        print(paste0('Saving Total_New_Sets from cache to global (',Sys.time(),')'))
-        for(i in Params$subdfs) {
-          Total_New_Sets[[i]] <- rbind.fill(Total_New_Sets[[i]], Total_New_Sets_Cache[[i]])
-          if(ncol(Total_New_Sets[[i]])>101 || any(!substr(unlist(sapply(Total_New_Sets, names)),1,1) %in% c('X','m'))) stop('Too many columns')
-        }
-        Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
-        Total_New <- rbind.fill(Total_New, Total_New_Cache) # No-op if cache is not used (dc)
-        Total_New_Cache <- data.frame()
-        print(paste0('deCaching complete (',Sys.time(),')'))
-      }
-    }
-    stop('Scheduled')
-    if(nrow(Total_New_Sets_Cache[[1]])>0) {
-      print(paste0('Saving Total_New_Sets from cache to global (',Sys.time(),')'))
-      for(i in Params$subdfs) {
-        Total_New_Sets[[i]] <- rbind.fill(Total_New_Sets[[i]], Total_New_Sets_Cache[[i]])
-      }
-      Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
+      if(((n %% 10 == 0) || Params$harv=='didlmods' && object.size(Total_New)+object.size(Total_New_Sets)+object.size(Total_New_Sets_Cache)+object.size(Total_New_Cache)>Params$MaxMem) 
+         && (nrow(Total_New_Cache)>0 || (length(Total_New_Sets)>0 && nrow(Total_New_Sets_Cache[[1]])>0))) deCache(clean = T, checkTotal=T)
     }
     Errors$UpToStep <- 'MergeRecords'
-    saveRDS(Total_New, file=paste0(Paths$Summaries,'/TotalNewNS',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-    saveRDS(Total_New_Sets, file=paste0(Paths$Summaries,'/Total_N_Sets',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-    saveRDS(Total_Del, file=paste0(Paths$Summaries,'/Total_N_Del',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-    saveRDS(MetaOut, file=paste0(Paths$Summaries,'/Meta_Out',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-    saveRDS(Errors, file=paste0(Paths$Summaries,'/ErrorsUpToStepMergeNew (temp)',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+    deCache(clean=T, checkTotal = T, save=T, fileNames=c(paste0(Paths$Summaries,'/',
+                            c('TotalNewNS', 'Total_ID', 'Total_Del', 'Meta_Out', 'ErrorsUpToStepMerge', if(Params$harv=='didlmods') NA else 'Total_N_Sets'),
+                            ' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'),NA))
+    if(nrow(Total_New_Cache)==0) rm(Total_New_Cache)
+    if(exist('Total_New_Sets_Cache') && (
+      (class('Total_New_Sets_Cache')=='data.frame' && nrow(Total_New_Sets_Cache)==0) ||
+      (class('Total_New_Sets_Cache')=='list' && all(sapply(Total_New_Sets_Cache, class)=='data.frame') && 
+      all(sapply(Total_New_Sets_Cache, nrow)==0))
+    )) rm(Total_New_Sets_Cache)
   }
   print('Merging new records among themselves completed.')
   Step <- 'FinalizeMerge'
@@ -2167,7 +2578,7 @@ if(Step=='MergeRecords') {
 if(Step=='FinalizeMerge') {
   rms <- ls()[!ls() %in% c(Params$keepvarnames, 'waardeomzet','oldIDs','newIDs','Total_Kept','Recfiles',
                            'Total_New','Total_New_Sets','MetaOut','Total_Del', 'IDfiles')]
-  if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords','Total_New_Sets_Cache','NewTotal','OldTotal') & !grepl('temp',rms)) ||
+  if (any(!rms %in% c(Params$tempvarnames,'lastchecked','lastResToken','newRecords','Total_ID','NewTotal','OldTotal') & !grepl('temp',rms)) ||
       !Errors$UpToStep %in% c('MergeRecords','Finalize') ||
       any(!c('oldIDs','newIDs','Total_New','Total_New_Sets','MetaOut','Total_Del','Recfiles') %in% ls())) {
     warning('Environment doesn\'t seem to be what it should be to start finalizing merge')
@@ -2175,6 +2586,7 @@ if(Step=='FinalizeMerge') {
   } else rm(list=rms)
   
   print('Starting finalization, first filling dependent fields')
+  tempwaitonerror <- F
   if(!exists('waardeomzet')) waardeomzet <- read.csv2(paste0(Paths$Params,'/Waardeomzet.csv'), stringsAsFactors = F)
   if(!is.null(Errors$RecMergeFinal)) {Errors$count <- Errors$count-length(Errors$RecMergeFinal)+1}
   Errors$RecMergeFinal <- c('Initialized, but not finished') # Used as warning
@@ -2188,14 +2600,24 @@ if(Step=='FinalizeMerge') {
     if(!duplicated(waardeomzet$FieldTo, fromLast = T)[n]) {
       Total_New[,waardeomzet$FieldTo[n]] <- as.factor(Total_New[,waardeomzet$FieldTo[n]])
       if(any(is.na(Total_New[waardeomzet$FieldTo[n]]) & !is.na(Total_New[waardeomzet$FieldFrom[n]]))) {
-        Errors$RecMergeFinal <- c(Errors$RecMergeFinal, paste('Not all values in waardeomzet have been covered, Field from',waardeomzet$FieldFrom[n],
-                                                              "to",waardeomzet$FieldTo[n]))
-        Errors$count <- Errors$count+1
-        print(paste('Errors in filling field:',waardeomzet$FieldTo[n]))
+        temperrors <- unique(Total_New[waardeomzet$FieldFrom[n]][is.na(Total_New[waardeomzet$FieldTo[n]]) & !is.na(Total_New[waardeomzet$FieldFrom[n]])])
+        temperrors <- paste0('Not all values in waardeomzet have been covered, field from ',waardeomzet$FieldFrom[n],
+                             " to ",waardeomzet$FieldTo[n],', value `',temperrors,'` (',sapply(temperrors, function(x) {
+                               sum(!is.na(Total_New[waardeomzet$FieldFrom[n]]) & Total_New[waardeomzet$FieldFrom[n]]==x)
+                             }),' occurences).')
+        Errors$RecMergeFinal <- c(Errors$RecMergeFinal, temperrors)
+        Errors$count <- Errors$count+length(temperrors)
+        tempwaitonerror <- T
+        print('Errors in filling field:')
+        sapply(temperrors[1:min(5,length(temperrors))], print)
       } else {
         #print(paste('Field filled:',waardeomzet$FieldTo[n]))
       }
     } # Transform to factor and check for completeness
+  }
+  if(tempwaitonerror) {
+    if(readline(prompt="There were errors. Continue anyway (y/n)? ")!='y') stop('Operation cancelled by user')
+    tempwaitonerror <- F
   }
   print('General cleaning up')
   for(i in names(Total_New)[sapply(Total_New, function(x) {class(x)[1]}) %in% c('character') &
@@ -2256,7 +2678,8 @@ if(Step=='FinalizeMerge') {
     print(paste("Frame filled:",n))
   }
   if(any(duplicated(c(NewTotal$ID, Total_Del$identifier)))) {
-    readline(prompt=paste('There are',sum(duplicated(c(NewTotal$ID, Total_Del$identifier))),'duplicates. Continue by removing them?'))
+    if(readline(prompt=paste('There are',sum(duplicated(c(NewTotal$ID, Total_Del$identifier))),'duplicates. Continue by removing them? '))!='y')
+      stop('Operation cancelled by user')
     NewTotal <- NewTotal[!duplicated(c(NewTotal$ID, Total_Del$identifier), fromLast = T)[1:nrow(NewTotal)],]
     print('Removal completed')
   }
@@ -2286,6 +2709,7 @@ if(Step=='MakeIDfile') {
   if(!exists('Recfiles')) {
     RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='.*\\(temp\\).*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
     RDSfiles$time <- file.mtime(RDSfiles$name)
+    if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
     RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
     RDSfiles <- RDSfiles[grepl('RecFileList',RDSfiles$name),]
     if(nrow(RDSfiles)>0) {
@@ -2444,67 +2868,32 @@ if(Step=='MakeIDfile') {
   IDs <- IDs[order(IDs$nr),]
   print('Saving IDfile')
   saveRDS(IDs, paste0(Paths$Summaries,'/IDlist (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+  tempcopy <- 'ask'
+  while(tempcopy=='ask') {
+    tempcopy <- readline(prompt='Do you want to copy the result to other folders (use this dataset for future reference) (y/n)? ')
+    if(!tempcopy %in% c('y','n')) tempcopy <- 'ask' else tempcopy <- tempcopy=='y'
+  }
+  if(tempcopy) {
+    RDSfiles <- data.frame(name=list.files(path=Paths$Summaries,
+                                           pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+    RDSfiles$time <- file.mtime(RDSfiles$name)
+    RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
+    if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
+    tempcopycount <- sum(
+      file.copy(from=RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1],
+              to=c(paste0(Paths$Dumps,'/Werkset/NewTotal dc',
+                        str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')),
+                   paste0(Paths$BaseForNewHarvest,'/NewTotal dc',
+                          str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')))))
+    tempcopycount <- tempcopycount+sum(
+      file.copy(from=RDSfiles$name[grepl('IDlist', RDSfiles$name)][1],
+                to=paste0(Paths$BaseForNewHarvest,'/IDlist dc',
+                          str_extract(RDSfiles$name[grepl('IDlist', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds'))))
+    cat(tempcopycount, 'of 3 succesfully copied\n')
+  }
   print('Finished!')
 }
 
-stop('End')
-# After this line code that can be run independently
-
-# De-cache and save Total_New(_Sets), used when breaking from merging
-if(T) {
-  if(exists('Total_New_Sets') && exists('Total_New_Sets_Cache')) {
-    print('First saving cached results dataframes')
-    for(i in Params$subdfs) {
-      if(nrow(Total_New_Sets[[i]])!=nrow(Total_New)) {
-        Total_New_Sets[[i]] <- rbind.fill(Total_New_Sets[[i]], Total_New_Sets_Cache[[i]])
-      }
-      if(!nrow(Total_New_Sets[[i]]) %in% c(nrow(Total_New), MetaOut$NoRecords)) {
-        stop('Unclear what values should be decached and which not')
-      }
-    }
-    rm(Total_New_Sets_Cache)
-    print('Finished deCaching')
-  }
-  if(exists('Total_New') && exists('Total_New_Cache')) {
-    print('First saving cached results raw list')
-    if(nrow(Total_New)<MetaOut$NoRecords && 
-       nrow(Total_New)+nrow(Total_New_Cache)>=MetaOut$NoRecords &&
-       !any(Total_New_Cache$ID %in% Total_New$ID)) {
-      Total_New <- rbind.fill(Total_New, Total_New_Cache)
-    }
-    if(nrow(Total_New)<MetaOut$NoRecords) {
-      stop('Warning: number of records seems corrupt')
-    }
-    rm(Total_New_Cache)
-    print('Finished deCaching')
-  }
-  if(class(Total_New_Sets)=='data.frame' && nrow(Total_New_Sets)>0) {
-    saveRDS(Total_New_Sets, file=
-              paste0(Paths$Summaries,'/Total_New_Sets (temp) (',
-                     gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  }
-  if(nrow(Total_New)>0) {
-    saveRDS(Total_New, file=
-              paste0(Paths$Summaries,'/Total_New (temp) (',
-                     gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  }
-  if(nrow(Total_Del)>0) {
-    saveRDS(Total_Del, file=
-              paste0(Paths$Summaries,'/Total_Del (temp) (',
-                     gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  }
-  if(exists('MetaOut')) {
-    saveRDS(MetaOut, file=
-              paste0(Paths$Summaries,'/MetaOut (temp) (',
-                     gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  }
-  if(!is.null(Errors$RecMerge)) {
-    saveRDS(Errors, file=
-              paste0(Paths$Summaries,'/Err_RecMerge (temp) (',
-                     gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
-  }
-  
-}
 
 
 

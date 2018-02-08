@@ -1,4 +1,4 @@
-source(paste0(getSrcDirectory(function(x) {x}), '/SetLocal.r'))
+{source(paste0(getSrcDirectory(function(x) {x}), '/SetLocal.r'))
 libinstandload('plyr','lubridate','ggplot2','plotly','scales','tidyr','reshape2','RColorBrewer','googleVis','readr','extrafont')
 options(OutDec = '.') # Put here for consistency. Should be overriden later, but not setting here led to initialization issues
 ColContrast <- function(bg, contrast='BW30') {
@@ -27,9 +27,9 @@ ColContrast <- function(bg, contrast='BW30') {
 }
 if(!exists('TotalVals')) {
   TotalVals <- ReadForAnalysisfromTotal(Summarize = 'Both')
-}
-part <- 1
-multiPlot <- lapply(rep(c(34, 7, 2, 22, 14), times=4), function(x) {x})[part]
+}} # Initialization
+part <- T
+multiPlot <- lapply(rep(c(7, 2, 22, 14), times=4), function(x) {x})[part]
 multiPlotParams <- list(GglPlotGlobLinks=rep(c(T,T,F,F),each=4)[part],
                         LabelsLang=rep(c('nl','en','en','nl'), each=4)[part])
 
@@ -41,7 +41,7 @@ for (ng in 1:length(multiPlot)) {
   plotData <- TotalVals
   levels(plotData$Type) <- c(levels(plotData$Type),'Unknown')
   plotData$Type[is.na(plotData$Type)] <- 'Unknown'
-  VSNU <- readRDS(paste0(Paths$input,'/VSNU.rds'))
+  VSNU <- readRDS(paste0(Paths$IO,'/VSNU.rds'))
   temp <- read.csv2(paste0(Paths$Params,'/UniNaamOmzet.csv'), stringsAsFactors = F)
   levels(VSNU$Universiteit) <- vapply(levels(VSNU$Universiteit), function(x) {temp$NARCISNaam[temp$VSNUNaam==x]}, character(1))
   rm(temp)
@@ -49,12 +49,13 @@ for (ng in 1:length(multiPlot)) {
   VSNU$Universiteit <- factor(VSNU$Universiteit, levels = levels(plotData$Bron))
   names(VSNU) <- c('Categorie','Bron','Jaar','freq')
   
+  PP$PrintPlot <- FALSE
+  PP$SavePlot <- TRUE
   PP$Zoomfactor <- .5
-  PP$SavePlot <- F
-  PP$PrintPlot <- T
-  PP$SaveGglPlotStd <- T
+  PP$SaveGglPlotStd <- TRUE
   PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
-  PP$GglPlotGlobLinks <- F
+  
+  PP$GglPlotGlobLinks <- FALSE
   PP$LabelsLang <- 'en'
   if(exists('multiPlotParams')) {
     for(par in names(multiPlotParams)) {
@@ -1373,8 +1374,8 @@ for (ng in 1:length(multiPlot)) {
     }
     if(!is.null(PP$plotPerc)) {
       plotRes <- plotRes +
-        geom_line(data=plotPercVals, aes(x=xpos, y=perc*100*ScaleFac, group=1, linetype=paste('Percentage',PP$plotPerc)), color=PP$kleuren[length(PP$kleuren)], size=PP$Zoomfactor/1.5)+ 
-        geom_point(data=plotPercVals, aes(x=xpos, y=perc*100*ScaleFac, color=col, alpha='Percentage'), size=PP$Zoomfactor*1.5)+
+        geom_line(data=plotPercVals, aes(x=xpos, y=perc*100*ScaleFac, group=1, linetype=paste('Percentage',PP$plotPerc)), color=PP$kleuren[length(PP$kleuren)], size=PP$Zoomfactor/1.5, na.rm = T)+ 
+        geom_point(data=plotPercVals, aes(x=xpos, y=perc*100*ScaleFac, color=col, alpha='Percentage'), size=PP$Zoomfactor*1.5, na.rm=T)+
         scale_alpha_discrete(limits=c(1,1), labels=paste('Percentage',PP$plotPerc)) +
         scale_color_manual(values=PP$kleuren[(nlevels(plotVals$col)+1):(nlevels(plotVals$col)*2+1)][levels(plotPercVals$col) %in% plotPercVals$col]) +
         scale_y_continuous(sec.axis = sec_axis(~./ScaleFac, name=PP$ylab2, labels=function(x) {paste(x,'%')}),
@@ -1392,8 +1393,8 @@ for (ng in 1:length(multiPlot)) {
     }
     if(!is.null(PP$SecLine)) {
       plotRes <- plotRes +
-        geom_line(data=plotValsSec, aes(x=xpos, y=freq, group=whichline, linetype=PP$LegLblLinetype[as.numeric(whichline)], color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=PP$Zoomfactor) +
-        geom_point(data=plotValsSec, aes(x=xpos, y=freq, alpha=whichline, color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=2*PP$Zoomfactor) +
+        geom_line(data=plotValsSec, aes(x=xpos, y=freq, group=whichline, linetype=PP$LegLblLinetype[as.numeric(whichline)], color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=PP$Zoomfactor, na.rm=T) +
+        geom_point(data=plotValsSec, aes(x=xpos, y=freq, alpha=whichline, color=sapply(whichline, function(n) {PP$extrakleuren$VSNULine[[n]]})), size=2*PP$Zoomfactor, na.rm=T) +
         scale_linetype(labels=PP$LegLblLinetype) +
         scale_alpha_manual(values=rep(1,nlevels(plotValsSec$whichline)), breaks=levels(plotValsSec$whichline), labels=PP$LegLblAlpha) +
         scale_color_identity(breaks=PP$extrakleuren$VSNULine, labels=PP$LegLblAlpha, guide='legend') +
@@ -2068,41 +2069,39 @@ for (ng in 1:length(multiPlot)) {
                           '<p style="margin-left:110px; width: 550px;"><label>',temp$graphtext,'</label></p>')
     }
     if(exists('temp')) {
-      if(PP$GglPlotFileName %in% list.files(Paths$input)) {
-        htmlfile <- read_file(paste0(Paths$input,'/',PP$GglPlotFileName))
+      if(PP$GglPlotFileName %in% list.files(Paths$IO)) {
+        htmlfile <- read_file(paste0(Paths$IO,'/',PP$GglPlotFileName))
       } else {
-        htmlfile <- read_file(paste0(Paths$input,'/GoogleChartsCode orig',PP$LabelsLang,'.htm'))
-      } # This is meant to be able to start with a clean version by removing GoogleChartsCode.htm. Also note this script was written with Paths$input==Paths$output
-      inspos <- list(gregexpr(paste0('<script type="text/javascript" id="barchartscript(',temp$n,')?">[^>]*google\\.setOnLoadCallback\\(drawChart',temp$n,'.*?</script>'), htmlfile)[[1]],
-                     gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_',temp$n,'"[^<>]*></div>.*?</label></p>'), htmlfile)[[1]])
-      if(inspos[[1]]!=-1 && inspos[[2]]!=-1) {
-        if (inspos[[1]]==-1 || inspos[[2]]==-1) {
-          warning('Not modifying html-file, unclear if chart in use')
-        } else {
-          print('Overwriting old graph')
-          htmlfile <- paste0(substr(htmlfile,1,inspos[[1]]-1),
-                             textR,
-                             substr(htmlfile,inspos[[1]]+attr(inspos[[1]], 'match.length'),inspos[[2]]-1),
-                             textBodyR,
-                             substr(htmlfile,inspos[[2]]+attr(inspos[[2]],'match.length'),nchar(htmlfile)))
-          write_file(htmlfile,
-                     path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
-        }
+        htmlfile <- read_file(paste0(Paths$IO,'/GoogleChartsCode orig',PP$LabelsLang,'.htm'))
+      } # This is meant to be able to start with a clean version by removing GoogleChartsCode.htm.
+      inspos <- gregexpr(paste0('<script type="text/javascript"[^>]*>[^>]*google\\.setOnLoadCallback\\(drawChart',temp$n,'.*?</script>'), htmlfile)[[1]]
+      if(inspos!=-1) {
+        print('Overwriting old data')
+        htmlfile <- paste0(substr(htmlfile,1,inspos-1),
+                           textR,
+                           substr(htmlfile,inspos+attr(inspos, 'match.length'),nchar(htmlfile)))
       } else {
         inspos <- gregexpr('<script type="text/javascript" id="barchartscript[0-9]*">.*?</script>', htmlfile)[[1]]
-        inspos2 <- gregexpr('<div id="barchart_div_?[0-9]*"[^<>]*></div>.*?</label></p>', htmlfile)[[1]]
-        pos <- c(inspos[length(inspos)]+attr(inspos, 'match.length')[length(inspos)]-1,
-                 inspos2[length(inspos2)]+attr(inspos2, 'match.length')[length(inspos2)]-1)
-        htmlfile <- paste0(substr(htmlfile,1,pos[1]),
+        pos <- inspos[length(inspos)]+attr(inspos, 'match.length')[length(inspos)]-1
+        htmlfile <- paste0(substr(htmlfile,1,pos),
                            '\n',
                            textR,
-                           substr(htmlfile,pos[1]+1,pos[2]),
+                           substr(htmlfile,pos+1,nchar(htmlfile)))
+      }
+      inspos <- gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_',temp$n,'"[^<>]*></div>.*?</label></p>'), htmlfile)[[1]]
+      if(inspos!=-1) {
+        htmlfile <- paste0(substr(htmlfile,1,inspos-1),
+                           textBodyR,
+                           substr(htmlfile,inspos+attr(inspos, 'match.length'),nchar(htmlfile)))
+      } else {
+        inspos <- gregexpr('<div id="barchart_div_?[0-9]*"[^<>]*></div>.*?</label></p>', htmlfile)[[1]]
+        pos <- inspos[length(inspos)]+attr(inspos, 'match.length')[length(inspos)]-1
+        htmlfile <- paste0(substr(htmlfile,1,pos),
                            '\n\n',
                            textBodyR,
-                           substr(htmlfile,pos[2]+1,nchar(htmlfile)))
-        write_file(htmlfile,
-                   path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
+                           substr(htmlfile,pos+1,nchar(htmlfile)))
       }
+      write_file(htmlfile,path=paste0(Paths$IO,'/',PP$GglPlotFileName))
     }
     if(multiPlot[[1]]==StandardPlot) {
       inspos <- gregexpr(paste0('<br><br><br>[^<>]*<h2[^<]*</h2>[^<>]*<div id="barchart_div_.?"[^<>]*></div>[^<>]*<p[^<>]*><label>(([^<>]*)|(<br>))*</label></p>',
@@ -2133,7 +2132,7 @@ for (ng in 1:length(multiPlot)) {
       }
       
       write_file(htmlfile,
-                 path=paste0(Paths$output,'/',PP$GglPlotFileName)) # Meant to be same file as with Paths$input
+                 path=paste0(Paths$IO,'/',PP$GglPlotFileName))
     }
   }
   print(paste('Graph',StandardPlot,'completed'))

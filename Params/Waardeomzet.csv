@@ -1,4 +1,6 @@
 FieldFrom;FieldTo;ValFrom;ValTo
+originURL;Bron;https://pure.amc.nl/ws/oai;UvA
+originURL;Bron;https://research.vu.nl/ws/oai;VU
 originURL;Bron;https://pure.rug.nl/ws/oai;RUG
 originURL;Bron;http://library.wur.nl/oai;Wageningen UR
 originURL;Bron;http://dare.uva.nl/oai_narcis;UvA
@@ -123,6 +125,8 @@ language;LangFull;ger;Duits
 language;LangFull;por;Portugees
 language;LangFull;et;Estisch
 language;LangFull;nn;Nynorsk¾(Nieuw-Noors)
+originURL;BronCat;https://pure.amc.nl/ws/oai;Universiteit (alg)
+originURL;BronCat;https://research.vu.nl/ws/oai;Universiteit (alg)
 originURL;BronCat;https://pure.rug.nl/ws/oai;Universiteit (alg)
 originURL;BronCat;http://library.wur.nl/oai;Universiteit (4TU)
 originURL;BronCat;http://dare.uva.nl/oai_narcis;Universiteit (alg)

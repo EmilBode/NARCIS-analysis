@@ -1,29 +1,56 @@
-Sys <- lapply(Sys.info(), function(x) {x})
+# Everything that needs to be adjusted is marked *This way*. In some cases something like a standard directory is suggested
+# Note that paths are best specified absolutely, because the user might change their working directory
+# These paths are used when harvesting new records, and plotting them. Also some helperfunctions are dependent in them
+
+Sys <- as.list(Sys.info())
 if(Sys$sysname=='Darwin') {
   MySrcPth <- getSrcDirectory(function(x) {x})
   for(i in 1:10) {
-    MySrcPth <- gsub('/[^/]+/\\.\\.', '', MySrcPth) # Resolve path: ~/Documents/Gitted/NARCIS/huppelepup/.. is ook goed
+    MySrcPth <- sub('/[^/]+/\\.\\.', '', MySrcPth) # Resolve path: ~/a/../b  is the same as ~/b
   }
   rm(i)
-  if(substring(Sys$release,1,2)!='17' || tolower(Sys$login)!='emilbode' || 
-     tolower(MySrcPth)!=tolower('/Users/emilbode/Documents/Gitted/NARCIS')) {
+  if(substring(Sys$release,1,2)!='17' || tolower(Sys$user)!='*YourUserName*' || 
+     tolower(MySrcPth)!=tolower('*Expected directory this file is in*')) {
     print('Warning: Unexpected Sys.info(), check SetLocal-file for details')
     print(paste('Path is',MySrcPth))
     readline('Press any key to continue anyway')
   }
-  options("java.home"="/Library/Java/JavaVirtualMachines/jdk-9.0.1.jdk/Contents/Home")
-  Sys.setenv(JAVA_HOME='/Library/Java/JavaVirtualMachines/jdk-9.0.1.jdk/Contents/Home')
-  Sys.setenv(LD_LIBRARY='/Library/Java/JavaVirtualMachines/jdk-9.0.1.jdk/Contents/Home/lib/server')
-  Sys.setenv(TZ='Europe/Amsterdam')
-  setwd('/users/emilbode/Documents/Gitted/NARCIS')
-  Paths <- list(RCode=getwd(),
-                Params=paste0(getwd(),'/Params'),
-                Dumps='/users/emilbode/Documents/BigFiles/NARCISdumps',
-                input='/users/emilbode/surfdrive/Documents/R-IO',
-                output='/users/emilbode/surfdrive/Documents/R-IO',
-                plots='/users/emilbode/surfdrive/Documents/R-IO/plots',
-                initial=paste0(getwd(),'/Help.R'))
+  options("java.home"="*/Library/Java/JavaVirtualMachines/jdk-9.0.1.jdk/Contents/Home*")
+  Sys.setenv(JAVA_HOME=options()$java.home)
+  Sys.setenv(LD_LIBRARY=paste0(*options()$java.home, '/lib/server')*)
+  Sys.setenv(TZ='*Europe/Amsterdam*')
+  setwd('*Expected directory this file is in*')
+  if(!exists('Paths')) Paths <- list() # If paths does exist, leave additional entries
+  Paths$RCode <- getwd()
+  Paths$Params <- paste0(Paths$RCode,'/Params')
+  Paths$Dumps <- '*Path/To/Store/Large/Files*'                                    # Used for harvesting via OAI-PMH
+  Paths$BaseForNewHarvest <- paste0(Paths$Dumps,'/InputForNew')
+  Paths$input <- '*Local path for smaller inputfiles*'                       # Not all input, name should have been something else
+  Paths$output <- Paths$input
+  Paths$IO <- Paths$input                                                         # This one is for scripts reading their own output again
+  Paths$plots <- paste0(Paths$output,'/plots')
+  Paths$MongoData <- '*/Path/to/Mongo*'                                     # This one is case-sensitive
+  Paths$ExpectedInit <- c("adjustnestednames",                            # We expect thes variables/functions to be present after initialisation
+                          "extractComments", 
+                          "libinstandload",
+                          "OpenMongo",
+                          "ReadForAnalysisfromTotal", 
+                          "readNARCIScla",
+                          "nestednames",
+                          "simple_rapply",
+                          "Paths")
+  Paths$initial <- if(!all(Paths$ExpectedInit %in% ls())) {             # These commands are executed at the end of te script. It is reset to source this very script ath the end
+    c(
+      lapply(paste0(Paths$RCode,c('/Help.R')), function(x) {list(what='source', args=list(x))}),
+      list(list(what='libinstandload', args=list('plyr','dplyr','XML'))))
+  } else {
+    list()
+  }
+  # Miscellaneous settings, feel free to delete where needed
+  options('roadoi_email'='*Your mailadress*')
+} # Darwin is the internal name for OSX
+for(s in Paths$initial) {
+  do.call(do.call, s)
 }
-rm(Sys)
-rm(MySrcPth)
-source(Paths$initial)
+rm(s, Sys, MySrcPath)
+Paths$initial <- list(list(what='source', args=list(paste0(Paths$RCode,'/SetLocal.R'))))
