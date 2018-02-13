@@ -4,3 +4,10 @@ At DANS, one of our services is NARCIS (National Academic Research and Collabora
 These scripts harvest the information in NARCIS via the OAI-PMH interface, and look into this data, mostly functions I've developed at my work.
 
 It's not really built with portability in mind, and I can't share all my data, but I can share some of it.
+
+This branch is trimmed down: Focus is on harvesting Dublin-Core metadata, and producing plots for the NARCIS-website.
+Documentation on how to harvest can be found in the Docs-folder
+-Reharvest en updaten websitegrafieken algemene opzet.docx is a general overview in Dutch,
+-Reharvest instructions.docx contains is a more specific walkthrough
+-Harvest Errorfile.docx is for reference in case irregularities are encountered
+-Documentatie R-scripts is still work in progress, it contains more information on different scripts.
