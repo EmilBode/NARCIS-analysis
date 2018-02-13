@@ -312,7 +312,8 @@ Params$Summarize <- c('IDs') # Which summaries should be produced? 'Records' or 
 { ## Some more settings, not used too much
   resdate <- NULL
   Params$reCalcIDs <- F # Should IDs be processed (again)? If true, summary is automatically produced as well
-  Params$oldfdate <- as.POSIXct('2017-10-01', tz='UTC') # If this date is too early, ID-processing fails if records from after this date have disappeared
+  # Date from which to assume all records have been harvested before, and records are stable:
+  Params$oldfdate <- as.POSIXct('1990-01-01', tz='UTC') # You can set this later for efficiency, but debugging becomes harder.
   Params$nfiles <- 50
   
   Paths$dumproot <- paste0(Paths$Dumps,'/',Params$NameOfHarv)
@@ -416,75 +417,84 @@ if(Step=='JustGo' || Step=='InitOnly') {
     }
     if(StepBU %in% c('JustGo','harvIDs')) Step <- 'Start'
     rm(StepBU)
+    resdate <- suppressWarnings(as.POSIXct(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Never', 'Assumed', 'Unchanged','Disappeared'))],Sys.time())-1))
   } else {
     RDSfiles <- data.frame(name=list.files(path=c(Paths$Summaries, paste0(Paths$Summaries, '/Chunks')),
                                            pattern='.*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
     RDSfiles$time <- file.mtime(RDSfiles$name)
     RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
     if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
-    temp <- difftime(Sys.time(), RDSfiles$time[grepl('oldIDs',RDSfiles$name)][1], units='days')<Params$MaxAge &&
-      difftime(Sys.time(), RDSfiles$time[grepl('FileList IDFs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
-      difftime(Sys.time(), RDSfiles$time[grepl('newIDs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
-      difftime(Sys.time(), RDSfiles$time[grepl('Errors',RDSfiles$name)][1],units='days')<Params$MaxAge
-    if(!is.na(temp) && temp && !Params$reCalcIDs) {
-      print('Reading files')
-      oldIDs <- readRDS(RDSfiles$name[grepl('oldIDs',RDSfiles$name)][1])
-      IDfiles <- readRDS(RDSfiles$name[grepl('FileList IDFs',RDSfiles$name)][1])
-      newIDs <- readRDS(RDSfiles$name[grepl('newIDs',RDSfiles$name)][1])
-      if(!exists('Errors')) {
-        Errors <- readRDS(RDSfiles$name[grepl('Errors|Err_RecMerge',RDSfiles$name)][1])
-      }
-      if(!exists('Total_New') && !any(grepl('TotalNewNS',RDSfiles$name)) &&
-         isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_New \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
-        Total_New <- readRDS(RDSfiles$name[grepl('Total_New \\(temp',RDSfiles$name)][1])
-      }
-      if(!exists('Total_Del') && !any(grepl('Total_Del',RDSfiles$name)) &&
-         isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_Del \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
-        Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del \\(temp',RDSfiles$name)][1])
-      }
-      if(!exists('Total_New_Sets') && !any(grepl('Total_N_Sets',RDSfiles$name)) &&
-         isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_New_Sets \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
-        Total_New_Sets <- readRDS(RDSfiles$name[grepl('Total_New_Sets \\(temp',RDSfiles$name)][1])
-      }
-      if(!exists('MetaOut') && !any(grepl('Meta_Out',RDSfiles$name)) &&
-         isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('MetaOut \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
-        MetaOut <- readRDS(RDSfiles$name[grepl('MetaOut \\(temp',RDSfiles$name)][1])
-        if(!exists('Total_New') && any(grepl('Total_Part', RDSfiles$name))) {
-          Total_New <- data.frame()
-          Total_New_Cache <- data.frame()
-          Total_New_Sets <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
-          Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
-        }
-        if(!exists('Total_ID') && any(grepl('Total_ID',RDSfiles$name)) &&
-           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_ID \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
-          Total_ID <- readRDS(RDSfiles$name[grepl('Total_ID \\(temp',RDSfiles$name)][1])
-        }
-      }
-      resdate <- as.Date(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Never', 'Assumed', 'Unchanged','Disappeared'))],Sys.time())-86400)
-      if(is.na(resdate) || !any(oldIDs$thisHarv)) {resdate <- NULL}
-      if(Step!='InitOnly') Step <- ifelse('alwaysIDs' %in% Params$Summarize,'showIDsumm','harvnewRecs')
+    if(any(grepl('\\/IDlist', RDSfiles$name))) {
+      Step <- 'CopyFiles'
     } else {
-      if(Step!='InitOnly') Step <- 'Start'
-    }
-    if(exists('Errors') && Errors$UpToStep=='MergeRecords') {
-      if(!exists('Total_New')) Total_New <- readRDS(RDSfiles$name[grepl('TotalNewNS',RDSfiles$name)][1])
-      if(!exists('Total_New_Sets')) Total_New_Sets <- readRDS(RDSfiles$name[grepl('Total_N_Sets',RDSfiles$name)][1])
-      if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del',RDSfiles$name)][1])
-      if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
-      if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
-      print('Reading finished')
-      if(Step!='InitOnly') Step <- 'FinalizeMerge'
-    }
-    if(exists('Errors') && Errors$UpToStep=='Finalize') {
-      if(!exists('NewTotal')) {
-        print('Reading new dataset')
-        NewTotal <- readRDS(RDSfiles$name[grepl('NewTotal',RDSfiles$name)][1])
+      temp <- difftime(Sys.time(), RDSfiles$time[grepl('oldIDs',RDSfiles$name)][1], units='days')<Params$MaxAge &&
+        difftime(Sys.time(), RDSfiles$time[grepl('FileList IDFs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
+        difftime(Sys.time(), RDSfiles$time[grepl('newIDs',RDSfiles$name)][1],units='days')<Params$MaxAge &&
+        difftime(Sys.time(), RDSfiles$time[grepl('Errors',RDSfiles$name)][1],units='days')<Params$MaxAge
+      if(!is.na(temp) && temp && !Params$reCalcIDs) {
+        print('Reading files')
+        oldIDs <- readRDS(RDSfiles$name[grepl('oldIDs',RDSfiles$name)][1])
+        IDfiles <- readRDS(RDSfiles$name[grepl('FileList IDFs',RDSfiles$name)][1])
+        newIDs <- readRDS(RDSfiles$name[grepl('newIDs',RDSfiles$name)][1])
+        if(!exists('Errors')) {
+          Errors <- readRDS(RDSfiles$name[grepl('Errors|Err_RecMerge',RDSfiles$name)][1])
+        }
+        if(!exists('Total_New') && 
+           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_New \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge) &&
+           !isTRUE(RDSfiles$time[grepl('Total_New \\(temp',RDSfiles$name)][1]<RDSfiles$time[grepl('Total_?New',RDSfiles$name)][1])) {
+          Total_New <- readRDS(RDSfiles$name[grepl('Total_New \\(temp',RDSfiles$name)][1])
+        }
+        if(!exists('Total_New_Sets') &&
+           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_New_Sets \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge) &&
+           !isTRUE(RDSfiles$time[grepl('Total_New_Sets \\(temp',RDSfiles$name)][1]<RDSfiles$time[grepl('Total.*Set',RDSfiles$name)][1])) {
+          Total_New_Sets <- readRDS(RDSfiles$name[grepl('Total_New_Sets \\(temp',RDSfiles$name)][1])
+        }
+        if(!exists('Total_Del') &&
+           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_Del \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge) &&
+           !isTRUE(RDSfiles$time[grepl('Total_Del \\(temp',RDSfiles$name)][1]<RDSfiles$time[grepl('Total.*Del',RDSfiles$name)][1])) {
+          Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del \\(temp',RDSfiles$name)][1])
+        }
+        if(!exists('MetaOut') &&
+           isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('MetaOut \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge) &&
+           !isTRUE(RDSfiles$time[grepl('MetaOut \\(temp',RDSfiles$name)][1]<RDSfiles$time[grepl('Meta.*Out',RDSfiles$name)][1])) {
+          MetaOut <- readRDS(RDSfiles$name[grepl('MetaOut \\(temp',RDSfiles$name)][1])
+          if(!exists('Total_New') && any(grepl('Total_Part', RDSfiles$name))) {
+            Total_New <- data.frame()
+            Total_New_Cache <- data.frame()
+            Total_New_Sets <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
+            Total_New_Sets_Cache <- sapply(Params$subdfs, function(x) {data.frame()}, simplify=F)
+          }
+          if(!exists('Total_ID') && any(grepl('Total_ID',RDSfiles$name)) &&
+             isTRUE(difftime(Sys.time(), RDSfiles$time[grepl('Total_ID \\(temp',RDSfiles$name)][1],units='days')<Params$MaxAge)) {
+            Total_ID <- readRDS(RDSfiles$name[grepl('Total_ID \\(temp',RDSfiles$name)][1])
+          }
+        }
+        resdate <- as.POSIXct(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Never', 'Assumed', 'Unchanged','Disappeared'))],Sys.time())-1)
+        if(is.na(resdate) || !any(oldIDs$thisHarv)) {resdate <- NULL}
+        if(Step!='InitOnly') Step <- ifelse('alwaysIDs' %in% Params$Summarize,'showIDsumm','harvnewRecs')
+      } else {
+        if(Step!='InitOnly') Step <- 'Start'
       }
-      if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_N_Del',RDSfiles$name)][1])
-      if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
-      if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
-      print('Reading finished')
-      if(Step!='InitOnly') Step <- 'MakeIDfile'
+      if(exists('Errors') && Errors$UpToStep=='MergeRecords') {
+        if(!exists('Total_New')) Total_New <- readRDS(RDSfiles$name[grepl('TotalNewNS',RDSfiles$name)][1])
+        if(!exists('Total_New_Sets')) Total_New_Sets <- readRDS(RDSfiles$name[grepl('Total_N_Sets',RDSfiles$name)][1])
+        if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_Del',RDSfiles$name)][1])
+        if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
+        if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
+        print('Reading finished')
+        if(Step!='InitOnly') Step <- 'FinalizeMerge'
+      }
+      if(exists('Errors') && Errors$UpToStep=='Finalize') {
+        if(!exists('NewTotal')) {
+          print('Reading new dataset')
+          NewTotal <- readRDS(RDSfiles$name[grepl('NewTotal',RDSfiles$name)][1])
+        }
+        if(!exists('Total_Del')) Total_Del <- readRDS(RDSfiles$name[grepl('Total_N_Del',RDSfiles$name)][1])
+        if(!exists('MetaOut')) MetaOut <- readRDS(RDSfiles$name[grepl('Meta_Out',RDSfiles$name)][1])
+        if(!exists('Recfiles')) Recfiles <- readRDS(RDSfiles$name[grepl('RecFileList', RDSfiles$name)][1])
+        print('Reading finished')
+        if(Step!='InitOnly') Step <- 'MakeIDfile'
+      }
     }
     rm(RDSfiles)
   }
@@ -556,14 +566,14 @@ if(Step=='harvIDs') {
     } else if(Params$harv=='dc') {
       Params$reCalcIDs <- T
       print('Starting harvesting IDs')
-      dump <- list_identifiers(Params$urls$dcoaiurl, as='raw', from=resdate,
+      dump <- list_identifiers(Params$urls$dcoaiurl, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M%SZ'),
                                dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$IDXML))
       rm(dump)
       lastResToken <- 'Endfile'
     } else if (Params$harv=='didlmods') {
       Params$reCalcIDs <- T
       print('Starting harvesting IDs')
-      dump <- list_identifiers(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=resdate,
+      dump <- list_identifiers(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M%SZ'),
                                dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$IDXML))
       rm(dump)
       lastResToken <- 'Endfile'
@@ -953,8 +963,10 @@ if(Step=='ProcIDs') {
   # Als deze stap incompleet is moeten problemen eerst worden opgelost
   if(!all(oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'))) {
     print('Warning: Some IDs seem to simply have disappeared')
-    Errors$Disappeared <- rbind.fill(Errors$Disappeared, oldIDs[!oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'),])
+    Errors$Disappeared <- oldIDs[!oldIDs$inNew %in% c('Deleted', 'Updated', 'Unchanged', 'Assumed','Never','Disappeared'),]
     oldIDs$inNew[oldIDs$inNew=='ToCheck'] <- 'Disappeared'
+  } else {
+    Errors$Disappeared <- data.frame()
   }
   if(SubStep=='SaveFiles') {
     print('Saving results')
@@ -974,8 +986,8 @@ if(Step=='ProcIDs') {
     warning('End of processing IDs: Unexpected variables present')
     stop()
   } else {
-    resdate <- as.Date(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
-                           ifelse(!all(is.na(oldIDs$LastUpdate)), max(oldIDs$LastUpdate),Sys.time()))-86400)
+    resdate <- as.POSIXct(min(newIDs$ts, oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
+                           ifelse(!all(is.na(oldIDs$LastUpdate)), max(oldIDs$LastUpdate),Sys.time()))-1)
     if(is.na(resdate) || !any(oldIDs$thisHarv)) {resdate <- NULL}
     print(paste('Resuming harvest at date', resdate))
     rm(list=ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','IDfiles')])
@@ -1008,7 +1020,7 @@ if(Step=='showIDsumm') {
     templimits <- c(as.POSIXct(min(newIDs$ts, 
                                    oldIDs$inNewTs[!(oldIDs$inNew %in% c('Assumed', 'Unchanged', 'Disappeared','Never'))],
                                    Sys.time(),
-                                   as.POSIXct(resdate))-86400), Sys.time())
+                                   resdate)-86400), Sys.time())
     tempbins <- 100
     print(ggplot(data=tstamps) +
             geom_histogram(aes(x=inNewTs, fill=inNew), breaks=as.numeric(c(templimits[1]+(0:tempbins*(templimits[2]-templimits[1])/tempbins)))) +
@@ -1067,7 +1079,7 @@ if(Step=='harvnewRecs') {
     if(Params$harv=='dc') {
       newRecords <- T
       print(paste0('Resuming harvesting records at ',Sys.time()))
-      print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
+      print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
                    format(100*Params$filesize*nrow(newfiles)/(nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))), digits=3),'%)'))
@@ -1078,7 +1090,7 @@ if(Step=='harvnewRecs') {
     } else if (Params$harv=='didlmods') {
       newRecords <- T
       print(paste0('Resuming harvesting records at ',Sys.time()))
-      print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
+      print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       print(paste0('And already ',nrow(newfiles),' x ',Params$filesize,' = ',Params$filesize*nrow(newfiles),' were done before (',
                    format(100*Params$filesize*nrow(newfiles)/(nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))), digits=3),'%)'))
@@ -1101,9 +1113,9 @@ if(Step=='harvnewRecs') {
     } else if(Params$harv=='dc') {
       newRecords <- T
       print('Starting harvesting records.')
-      print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
+      print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
-      dump <- list_records(Params$urls$dcoaiurl, as='raw', from=resdate,
+      dump <- list_records(Params$urls$dcoaiurl, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M:%SZ'),
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$dcoaiurl)$setSpec))
       rm(dump)
@@ -1111,9 +1123,9 @@ if(Step=='harvnewRecs') {
     } else if (Params$harv=='didlmods') {
       newRecords <- T
       print('Starting harvesting records.')
-      print(paste0('Expected number of records is ',nrow(newIDs)+sum(oldIDs$inNew %in% c('Deleted','Updated','New'))))
+      print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
-      dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=resdate,
+      dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M:%SZ'),
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$gmhoaiurl)$setSpec))
       rm(dump)
@@ -1126,7 +1138,7 @@ if(Step=='harvnewRecs') {
   print('Harvesting records complete')
   if(!'Records' %in% Params$Summarize) {
     if(!exists('Recfiles')) {
-      RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='.*\\(temp\\).*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+      RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
       RDSfiles$time <- file.mtime(RDSfiles$name)
       if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
       RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
@@ -1422,7 +1434,7 @@ if(Step=='SummariseRecords') {
                                                        repl=as.character(Recfiles$ReqDelay[Recfiles$ReqDelay>60]),
                                                        fileno=Recfiles$nr[Recfiles$ReqDelay>60]))
   }
-  saveRDS(Recfiles, file=paste0(Paths$Summaries,'/RecFileList (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+  saveRDS(Recfiles, file=paste0(Paths$Summaries,'/RecFileList (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
   Errors$UpToStep <- 'SummariseRecords'
   saveRDS(Errors, file=paste0(Paths$Summaries,'/ErrorsUpToSummariseRecords (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
   Step <- 'ParseRecords'
@@ -1811,7 +1823,6 @@ if(Step=='ParseRecords') {
   }
   Step <- 'MergeRecords'
 }
-stop('Debug')
 if(Step=='MergeRecords') {
   rms <- ls()[!ls() %in% c(Params$keepvarnames,'oldIDs','newIDs','Total_Kept','Recfiles','Total_New','Total_New_Cache',
                            'Total_New_Sets','Total_New_Sets_Cache','MetaOut','Total_Del', 'IDfiles','Total_ID')]
@@ -2563,12 +2574,12 @@ if(Step=='MergeRecords') {
     }
     Errors$UpToStep <- 'MergeRecords'
     deCache(clean=T, checkTotal = T, save=T, fileNames=c(paste0(Paths$Summaries,'/',
-                            c('TotalNewNS', 'Total_ID', 'Total_Del', 'Meta_Out', 'ErrorsUpToStepMerge', if(Params$harv=='didlmods') NA else 'Total_N_Sets'),
+                            c('TotalNewNS (temp)', 'Total_ID (temp)', 'Total_Del (temp)', 'Meta_Out', 'ErrorsUpToStepMerge (temp)', if(Params$harv=='didlmods') NA else 'Total_N_Sets (temp)'),
                             ' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'),NA))
     if(nrow(Total_New_Cache)==0) rm(Total_New_Cache)
-    if(exist('Total_New_Sets_Cache') && (
-      (class('Total_New_Sets_Cache')=='data.frame' && nrow(Total_New_Sets_Cache)==0) ||
-      (class('Total_New_Sets_Cache')=='list' && all(sapply(Total_New_Sets_Cache, class)=='data.frame') && 
+    if(exists('Total_New_Sets_Cache') && (
+      (class(Total_New_Sets_Cache)=='data.frame' && nrow(Total_New_Sets_Cache)==0) ||
+      (class(Total_New_Sets_Cache)=='list' && all(sapply(Total_New_Sets_Cache, class)=='data.frame') && 
       all(sapply(Total_New_Sets_Cache, nrow)==0))
     )) rm(Total_New_Sets_Cache)
   }
@@ -2692,7 +2703,7 @@ if(Step=='FinalizeMerge') {
   saveRDS(Total_Del, file=paste0(Paths$Summaries,'/Total_N_Del',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
   Errors$RecMergeFinal <- Errors$RecMergeFinal[-1] #Removal of incompleteness warning
   Errors$UpToStep <- 'Finalize'
-  saveRDS(Errors, file=paste0(Paths$Summaries,'/ErrorsUpToStepMergeFinal (temp)',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+  saveRDS(Errors, file=paste0(Paths$Summaries,'/ErrorsUpToStepMergeFinal',' (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
   Step <- 'MakeIDfile'
 }
 if(Step=='MakeIDfile') {
@@ -2707,7 +2718,7 @@ if(Step=='MakeIDfile') {
   } else rm(list=rms)
   print('Start ID-making step')
   if(!exists('Recfiles')) {
-    RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='.*\\(temp\\).*\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
+    RDSfiles <- data.frame(name=list.files(path=Paths$Summaries, pattern='\\.(rds|RDS)', full.name=T), stringsAsFactors = F)
     RDSfiles$time <- file.mtime(RDSfiles$name)
     if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
     RDSfiles <- RDSfiles[order(RDSfiles$time, decreasing=T),]
@@ -2839,7 +2850,7 @@ if(Step=='MakeIDfile') {
   if(any(IDs$inNew %in% c('Deleted','Updated') & !is.na(IDs$LastUpdate.old) & IDs$LastUpdate.old==IDs$LastUpdate.NewT)) {
     stop('Conflicting timestamps (4)')
   } # Check if newer record is harvested
-  if(!is.null(resdate) && any(IDs$inNew %in% c('Deleted','Updated','New') & IDs$LastUpdate<as.POSIXct(resdate))) {
+  if(!is.null(resdate) && any(IDs$inNew %in% c('Deleted','Updated','New') & IDs$LastUpdate<resdate)) {
     stop('Error in making IDs: Record was modified, but LastUpdate before resdate')
   }
   if(any(IDs$originURL!=IDs$originURL.old, IDs$originURL!=IDs$originURL.NewT, na.rm = TRUE)) {
@@ -2868,6 +2879,9 @@ if(Step=='MakeIDfile') {
   IDs <- IDs[order(IDs$nr),]
   print('Saving IDfile')
   saveRDS(IDs, paste0(Paths$Summaries,'/IDlist (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+  Step <- 'CopyFiles'
+}
+if(Step=='CopyFiles') {
   tempcopy <- 'ask'
   while(tempcopy=='ask') {
     tempcopy <- readline(prompt='Do you want to copy the result to other folders (use this dataset for future reference) (y/n)? ')
@@ -2881,10 +2895,10 @@ if(Step=='MakeIDfile') {
     if(Params$debug) RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
     tempcopycount <- sum(
       file.copy(from=RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1],
-              to=c(paste0(Paths$Dumps,'/Werkset/NewTotal dc',
-                        str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')),
-                   paste0(Paths$BaseForNewHarvest,'/NewTotal dc',
-                          str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')))))
+                to=c(paste0(Paths$Dumps,'/Werkset/Total dc',
+                            str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')),
+                     paste0(Paths$BaseForNewHarvest,'/Total dc',
+                            str_extract(RDSfiles$name[grepl('NewTotal', RDSfiles$name)][1], ' \\([0-9]+\\)\\.rds')))))
     tempcopycount <- tempcopycount+sum(
       file.copy(from=RDSfiles$name[grepl('IDlist', RDSfiles$name)][1],
                 to=paste0(Paths$BaseForNewHarvest,'/IDlist dc',
@@ -2892,7 +2906,7 @@ if(Step=='MakeIDfile') {
     cat(tempcopycount, 'of 3 succesfully copied\n')
   }
   print('Finished!')
-}
+} # Copy files to next locations?
 
 
 

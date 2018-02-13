@@ -1,33 +1,35 @@
-{source(paste0(getSrcDirectory(function(x) {x}), '/SetLocal.r'))
-libinstandload('plyr','lubridate','ggplot2','plotly','scales','tidyr','reshape2','RColorBrewer','googleVis','readr','extrafont')
-options(OutDec = '.') # Put here for consistency. Should be overriden later, but not setting here led to initialization issues
-ColContrast <- function(bg, contrast='BW30') {
-  if(nchar(bg)!=7 || substr(bg,1,1)!='#') {
-    print(paste('Warning: ColContrast called with invalid color:',bg))
-    return('#000000')
-  }
-  bgr <- substr(bg,2,3)
-  bgg <- substr(bg,4,5)
-  bgb <- substr(bg,6,7)
-  if (substr(contrast,1,3)=='Add') {
-    if(nchar(contrast)==3) {
-      contrast <- 128
-    } else {contrast <- 2.56*as.numeric(substr(contrast,4,nchar(contrast)))}
-    bgr <- as.hexmode((strtoi(bgr, 16L)+128) %% 256)
-    bgg <- as.hexmode((strtoi(bgg, 16L)+128) %% 256)
-    bgb <- as.hexmode((strtoi(bgb, 16L)+128) %% 256)
+{
+  source(paste0(getSrcDirectory(function(x) {x}), '/SetLocal.r'))
+  libinstandload('plyr','lubridate','ggplot2','plotly','scales','tidyr','reshape2','RColorBrewer','googleVis','readr','extrafont')
+  options(OutDec = '.') # Put here for consistency. Should be overriden later, but not setting here led to initialization issues
+  ColContrast <- function(bg, contrast='BW30') {
+    if(nchar(bg)!=7 || substr(bg,1,1)!='#') {
+      print(paste('Warning: ColContrast called with invalid color:',bg))
+      return('#000000')
+    }
+    bgr <- substr(bg,2,3)
+    bgg <- substr(bg,4,5)
+    bgb <- substr(bg,6,7)
+    if (substr(contrast,1,3)=='Add') {
+      if(nchar(contrast)==3) {
+        contrast <- 128
+      } else {contrast <- 2.56*as.numeric(substr(contrast,4,nchar(contrast)))}
+      bgr <- as.hexmode((strtoi(bgr, 16L)+128) %% 256)
+      bgg <- as.hexmode((strtoi(bgg, 16L)+128) %% 256)
+      bgb <- as.hexmode((strtoi(bgb, 16L)+128) %% 256)
+      return(paste0('#',bgr,bgg,bgb))
+    }
+    if (substr(contrast,1,2)=='BW') {
+      if(nchar(contrast)==2) {cutoff <- 448} else {cutoff <- 8.96*as.numeric(substr(contrast,3,nchar(contrast)))}
+      coltotal <- strtoi(bgr, 16L)+2*strtoi(bgg, 16L)+strtoi(bgb, 16L)/2
+      return(ifelse(coltotal>cutoff,'#000000','#FFFFFF'))
+    }
     return(paste0('#',bgr,bgg,bgb))
   }
-  if (substr(contrast,1,2)=='BW') {
-    if(nchar(contrast)==2) {cutoff <- 448} else {cutoff <- 8.96*as.numeric(substr(contrast,3,nchar(contrast)))}
-    coltotal <- strtoi(bgr, 16L)+2*strtoi(bgg, 16L)+strtoi(bgb, 16L)/2
-    return(ifelse(coltotal>cutoff,'#000000','#FFFFFF'))
+  if(!exists('TotalVals')) {
+    TotalVals <- ReadForAnalysisfromTotal(Summarize = 'Both')
   }
-  return(paste0('#',bgr,bgg,bgb))
-}
-if(!exists('TotalVals')) {
-  TotalVals <- ReadForAnalysisfromTotal(Summarize = 'Both')
-}} # Initialization
+} # Initialization
 part <- T
 multiPlot <- lapply(rep(c(7, 2, 22, 14), times=4), function(x) {x})[part]
 multiPlotParams <- list(GglPlotGlobLinks=rep(c(T,T,F,F),each=4)[part],
@@ -35,26 +37,29 @@ multiPlotParams <- list(GglPlotGlobLinks=rep(c(T,T,F,F),each=4)[part],
 
 
 for (ng in 1:length(multiPlot)) {
-  StandardPlot <- multiPlot[[ng]]
-  PP <- list()
-  if(exists('Jaren')) {rm(Jaren)}
-  plotData <- TotalVals
-  levels(plotData$Type) <- c(levels(plotData$Type),'Unknown')
-  plotData$Type[is.na(plotData$Type)] <- 'Unknown'
-  VSNU <- readRDS(paste0(Paths$IO,'/VSNU.rds'))
-  temp <- read.csv2(paste0(Paths$Params,'/UniNaamOmzet.csv'), stringsAsFactors = F)
-  levels(VSNU$Universiteit) <- vapply(levels(VSNU$Universiteit), function(x) {temp$NARCISNaam[temp$VSNUNaam==x]}, character(1))
-  rm(temp)
-  
-  VSNU$Universiteit <- factor(VSNU$Universiteit, levels = levels(plotData$Bron))
-  names(VSNU) <- c('Categorie','Bron','Jaar','freq')
+  {
+    StandardPlot <- multiPlot[[ng]]
+    PP <- list()
+    if(exists('Jaren')) {rm(Jaren)}
+    plotData <- TotalVals
+    levels(plotData$Type) <- c(levels(plotData$Type),'Unknown')
+    plotData$Type[is.na(plotData$Type)] <- 'Unknown'
+    VSNU <- readRDS(paste0(Paths$Params,'/VSNU.rds'))
+    temp <- read.csv2(paste0(Paths$Params,'/UniNaamOmzet.csv'), stringsAsFactors = F)
+    levels(VSNU$Universiteit) <- vapply(levels(VSNU$Universiteit), function(x) {temp$NARCISNaam[temp$VSNUNaam==x]}, character(1))
+    rm(temp)
+    
+    VSNU$Universiteit <- factor(VSNU$Universiteit, levels = levels(plotData$Bron))
+    names(VSNU) <- c('Categorie','Bron','Jaar','freq')
+  } # Get clean data
   
   PP$PrintPlot <- FALSE
+  PP$PausePlot <- FALSE
   PP$SavePlot <- TRUE
   PP$Zoomfactor <- .5
   PP$SaveGglPlotStd <- TRUE
-  PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
   
+  PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
   PP$GglPlotGlobLinks <- FALSE
   PP$LabelsLang <- 'en'
   if(exists('multiPlotParams')) {
@@ -2136,6 +2141,7 @@ for (ng in 1:length(multiPlot)) {
     }
   }
   print(paste('Graph',StandardPlot,'completed'))
+  if(PP$PrintPlot && readline('Press any key to continue')!='StopNow') {}
 }
 
 

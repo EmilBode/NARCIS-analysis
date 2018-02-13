@@ -7,13 +7,16 @@ if(!exists('Paths')) {
   rm(src)
 } else {
   # First check if all paths exist
-  for(dir in Paths[!names(Paths) %in% c('ExpectedInit', "initial")]) {
+  for(dir in Paths[!names(Paths) %in% c('ExpectedInit', "initial") & 
+                   sapply(Paths, class)=='character' &
+                   sapply(Paths, length)==1 &
+                   !grepl('\\.', Paths)]) {
     if(!dir.exists(dir)) {
-      if(readline(prompt=paste0('Directory \"',dir,'" does not exist. Create it (y/n)? '))=='y')
+      if(readline(prompt=paste0('Directory \"',dir,'", given in Paths$',names(Paths)[which(Paths==x)],' does not exist. Create it (y/n)? '))=='y')
         dir.create(dir, recursive=T)
     }
   }
-  
+  rm(dir)
   # Collection of functions, useful for NARCIS-analysis
   libinstandload <- function(..., order=F, quiet=T) {
     packages <- unlist(as.vector(unlist(list(...))))
