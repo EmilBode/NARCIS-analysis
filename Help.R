@@ -10,9 +10,10 @@ if(!exists('Paths')) {
   for(dir in Paths[!names(Paths) %in% c('ExpectedInit', "initial") & 
                    sapply(Paths, class)=='character' &
                    sapply(Paths, length)==1 &
-                   !grepl('\\.', Paths)]) {
+                   !grepl('(\\.)|(Mongo)', Paths) &
+                   grepl('^/', Paths)]) {
     if(!dir.exists(dir)) {
-      if(readline(prompt=paste0('Directory \"',dir,'", given in Paths$',names(Paths)[which(Paths==x)],' does not exist. Create it (y/n)? '))=='y')
+      if(readline(prompt=paste0('Directory \"',dir,'", given in Paths$',names(Paths)[which(Paths==dir)],' does not exist. Create it (y/n)? '))=='y')
         dir.create(dir, recursive=T)
     }
   }
@@ -208,7 +209,7 @@ if(!exists('Paths')) {
     }
   }
   OpenMongo <- function(DBName, collection='none', dockername=NULL, imagename=NULL, path=NULL, host="127.0.0.1", port=27017, 
-                        inclView=T, preOnly=F, updateImage=F, newView=preOnly, quiet=F, user=NULL, pswd=NULL, echo=F) {
+                        inclView=T, preOnly=F, updateImage=F, newView=preOnly, quiet=F, user=NULL, pswd=NULL, echo=F, kickport=T) {
     libinstandload('RMongo')
     if(!is.numeric(port)) {
       if(!grepl('\\+', port)) stop('Unclear port')
@@ -241,7 +242,7 @@ if(!exists('Paths')) {
       }
       
       mongo <- mongoDbConnect(DBName, host, port)
-      answer <- NA
+      answer <- 'n'
       while(!success && tries<100) {
         tryCatch({
           # Note that if mongo is not yet ready, dbAuthenticate throws an error before print is called
@@ -313,12 +314,12 @@ if(!exists('Paths')) {
             if(echo) print(paste('System call:', 'docker ps'))
             output <- suppressWarnings(system2('docker', args=c('ps'), stderr=T, stdout=T))
             if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
-            if(any(grepl('Error! Is the docker daemon running\\?', output, ignore.case = T))) stop('ToCatchError')
+            if(substring(output[1],1,12)!='CONTAINER ID') stop('ToCatchError')
             success <- T
           }, error=function(e) {
             if(preOnly) {
               print('Warning: Docker process was running, but seems not to respond')
-              tries <<- 101
+              tries <<- 1001
             } else {
               if(tries==0) {
                 print('Waiting for docker process to get ready')
@@ -330,9 +331,26 @@ if(!exists('Paths')) {
             }
           })
         }
-        if(tries==101) return(NULL) # No connection, but preOnly
+        if(tries==1001) return(NULL) # No connection, but preOnly
         if(!success) {
           stop('Docker seems not to get ready')
+        } else if (tries>0) {
+          cat('\n')
+        }
+      }
+      if(kickport && !checkport) {
+        if(suppressWarnings(length(system(paste0('lsof -n | grep vpnkit.*TCP.*',port,'.*LISTEN'), intern = T)))!=0) {
+          output <- fromJSON(system('docker inspect $(docker ps -q)', intern=T))
+          toStop <- output$Id[sapply(1:nrow(output),function(x) {isTRUE(output[x,]$HostConfig$PortBindings$`27017/tcp`[[1]]$HostPort=='27017' &&
+                                                                          output[x,]$Name!=paste0('/',dockername))})]
+          if(length(toStop)>1) stop('According to system call, already multiple processes are listening on this port. This can\'t be right, investigate first')
+          if(length(toStop)==1) {
+            syscall <- paste('docker stop', toStop)
+            if(echo) print(paste('System call:', syscall))
+            output <- system(syscall, intern=T)
+            if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
+            if(output!=toStop) stop('Stopping containers to free port unsuccesful')
+          }
         }
       }
       if(is.null(imagename)) {
@@ -437,6 +455,19 @@ if(!exists('Paths')) {
         }
       }
       if(inclView) {
+        if(!newView) {
+          syscall <- 'docker ps -a'
+          if(echo) print(paste('System call:', syscall))
+          output <- system(syscall, intern=T)
+          if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
+          if(any(grepl(' mongoview$', output))) {
+            syscall <- 'docker inspect mongoview'
+            if(echo) print(paste('System call:', syscall))
+            output <- fromJSON(system(syscall, intern=T))
+            if(echo) print(paste0('Returned JSON-object of ',length(output),' fields.'))
+            newView <- !any(grepl(dockername, output$HostConfig$Links, fixed = T))
+          }
+        } # Check first if runnning mongoview-container is linking to the right mongo
         if(newView) {
           syscall <- 'docker ps'
           if(echo) print(paste('System call:', syscall))
@@ -514,7 +545,10 @@ if(!exists('Paths')) {
         if(echo) print(paste('System call:', syscall))
         output <- system(syscall, intern=T)
         if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
-        if(output!='mongoview') stop('Error in starting mongoview')
+        if(output!='mongoview') {
+          #This means staring mongo was unsuccesful. Most probable reason: linking to wrong container
+          stop('Error in starting mongoview')
+        }
       }
     }
     if(preOnly) {

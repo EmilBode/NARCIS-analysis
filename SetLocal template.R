@@ -52,7 +52,7 @@ if(Sys$sysname=='Darwin') {
     list()
   }
   # Miscellaneous settings, feel free to delete where needed
-  options('roadoi_email'='*Your mailadress*')
+  options('roadoi_email'=tolower('*Your mailadress*'))
 } # Darwin is the internal name for OSX
 for(s in Paths$initial) {
   do.call(do.call, s)
