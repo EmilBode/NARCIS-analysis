@@ -567,7 +567,7 @@ if(Step=='harvIDs') {
       Params$reCalcIDs <- T
       print('Starting harvesting IDs')
       if(is.null(resdate)) resdate <- as.POSIXct('1900-12-31')
-      dump <- list_identifiers(Params$urls$dcoaiurl, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M%SZ'),
+      dump <- list_identifiers(Params$urls$dcoaiurl, as='raw', from=format(resdate, Params$dateform[1]),
                                dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$IDXML))
       rm(dump)
       lastResToken <- 'Endfile'
@@ -575,7 +575,7 @@ if(Step=='harvIDs') {
       Params$reCalcIDs <- T
       print('Starting harvesting IDs')
       if(is.null(resdate)) resdate <- as.POSIXct('1900-12-31')
-      dump <- list_identifiers(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M%SZ'),
+      dump <- list_identifiers(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, Params$dateform[1]),
                                dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$IDXML))
       rm(dump)
       lastResToken <- 'Endfile'
@@ -1118,7 +1118,7 @@ if(Step=='harvnewRecs') {
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       if(is.null(resdate)) resdate <- as.POSIXct('1900-12-31')
-      dump <- list_records(Params$urls$dcoaiurl, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M:%SZ'),
+      dump <- list_records(Params$urls$dcoaiurl, as='raw', from=format(resdate, Params$dateform[1]),
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$dcoaiurl)$setSpec))
       rm(dump)
@@ -1129,7 +1129,7 @@ if(Step=='harvnewRecs') {
       print(paste0('Expected number of records is ',nrow(newIDs)+sum(!is.na(oldIDs$inNewTs) & oldIDs$inNewTs>resdate)))
       print(paste0('Of which ',sum(oldIDs$inNew %in% c('Deleted'))+sum(newIDs$del),' are deleted (smaller)'))
       if(is.null(resdate)) resdate <- as.POSIXct('1900-12-31')
-      dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, '%Y-%m-%dT%H:%M:%SZ'),
+      dump <- list_records(Params$urls$gmhoaiurl, prefix = Params$urls$gmhformat, as='raw', from=format(resdate, Params$dateform[1]),
                            dumper=dump_raw_to_txt, dumper_args=list(file_dir=Paths$XML))
       Params$SetsSet <- unique(c(Params$SetsSet, oai::list_sets(url=Params$urls$gmhoaiurl)$setSpec))
       rm(dump)
