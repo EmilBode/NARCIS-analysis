@@ -31,10 +31,10 @@
   }
 } # Initialization
 part <- T
-multiPlot <- lapply(rep(c(7, 2, 22, 14), times=4), function(x) {x})[part]
+multiPlot <- lapply(rep(c(7, 2, 22, 14), times=1), function(x) {x})[part]
 multiPlotParams <- list(GglPlotGlobLinks=rep(c(T,T,F,F),each=4)[part],
                         LabelsLang=rep(c('nl','en','en','nl'), each=4)[part])
-
+multiPlotParams <- multiPlotParams[1:4]
 
 for (ng in 1:length(multiPlot)) {
   {
@@ -57,7 +57,7 @@ for (ng in 1:length(multiPlot)) {
   PP$PausePlot <- FALSE
   PP$SavePlot <- TRUE
   PP$Zoomfactor <- .5
-  PP$SaveGglPlotStd <- TRUE
+  PP$SaveGglPlotStd <- F
   
   PP$SaveGglPlot <- PP$SaveGglPlotStd && StandardPlot %in% c(2,7,22,14)
   PP$GglPlotGlobLinks <- FALSE
@@ -267,7 +267,7 @@ for (ng in 1:length(multiPlot)) {
     plotData <- plotData[c(1:(ncol(plotData)-11),ncol(plotData))]
     plotData <- plotData[plotData$Access!='Other',]
     Jaren <- c(2000,2017,F)
-    plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)'),]
+    plotData <- plotData[plotData$BronSoort %in% c('Universiteit (4TU)','Universiteit (alg)') | plotData$Bron=='Hogescholen',]
     plotData <- plotData[!plotData$Type %in% c('Bachelor Thesis', 'Master Thesis'),]
   
     temp <- read.csv2(paste0(Paths$Params,'/TypeCats.csv'), stringsAsFactors = F)
@@ -2143,8 +2143,6 @@ for (ng in 1:length(multiPlot)) {
   print(paste('Graph',StandardPlot,'completed'))
   if(PP$PrintPlot && readline('Press any key to continue')!='StopNow') {}
 }
-
-
 
   
   

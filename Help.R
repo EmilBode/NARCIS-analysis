@@ -73,6 +73,7 @@ if(!exists('Paths')) {
         loadfonts(device='postscript')
       }
     }
+    return(invisible(0))
   }
   ReadForAnalysisfromTotal <- function(Summarize=FALSE, FilePath='Auto', set='auto', ForceReload=F, silent=F, DropCols=NULL, KeepCols=NULL, KeepSets=NULL, KeepMulti=NULL) { # Padding
     libinstandload('plyr','lubridate')
@@ -208,15 +209,15 @@ if(!exists('Paths')) {
       return(lobj)
     }
   }
-  OpenMongo <- function(DBName, collection='none', dockername=NULL, imagename=NULL, path=NULL, host="127.0.0.1", port=27017, 
-                        inclView=T, preOnly=F, updateImage=F, newView=preOnly, quiet=F, user=NULL, pswd=NULL, echo=F, kickport=T) {
+  OpenMongo <- function(DBName, collection='none', dockername=NULL, imagename=NULL, path=NULL, host="127.0.0.1", port='27017+', viewport=8081,
+                        inclView=T, preOnly=F, updateImage=F, newView=preOnly, quiet=F, user=NULL, pswd=NULL, echo=F, kickport=F, checkport=F) {
     libinstandload('RMongo')
     if(!is.numeric(port)) {
       if(!grepl('\\+', port)) stop('Unclear port')
       port <- as.numeric(gsub('\\+','',port))
       if(is.null(port) || is.na(port) || !is.numeric(port) || port==0) stop('Unclear port')
       checkport <- T
-    } else checkport <- F
+    }
     if(!is.null(user) && is.na(user)) {
       if(exists('Params') && !is.null(Params$MongoUser)) {
         user <- Params$MongoUser
@@ -241,6 +242,7 @@ if(!exists('Paths')) {
         print('Script will fail if no process has initialized in 100 seconds')
       }
       
+      if(!quiet) print('Trying to establish connection')
       mongo <- mongoDbConnect(DBName, host, port)
       answer <- 'n'
       while(!success && tries<100) {
@@ -336,15 +338,17 @@ if(!exists('Paths')) {
           stop('Docker seems not to get ready')
         } else if (tries>0) {
           cat('\n')
+          if(!quiet) print('Docker started succesfully')
         }
       }
       if(kickport && !checkport) {
-        if(suppressWarnings(length(system(paste0('lsof -n | grep vpnkit.*TCP.*',port,'.*LISTEN'), intern = T)))!=0) {
+        if(suppressWarnings(length(system(paste0('lsof -nP | grep vpnkit.*TCP.*',port,'.*LISTEN'), intern = T)))!=0) {
           output <- fromJSON(system('docker inspect $(docker ps -q)', intern=T))
           toStop <- output$Id[sapply(1:nrow(output),function(x) {isTRUE(output[x,]$HostConfig$PortBindings$`27017/tcp`[[1]]$HostPort=='27017' &&
                                                                           output[x,]$Name!=paste0('/',dockername))})]
           if(length(toStop)>1) stop('According to system call, already multiple processes are listening on this port. This can\'t be right, investigate first')
           if(length(toStop)==1) {
+            if(!quiet) print('Freeing port by stopping other container')
             syscall <- paste('docker stop', toStop)
             if(echo) print(paste('System call:', syscall))
             output <- system(syscall, intern=T)
@@ -359,6 +363,7 @@ if(!exists('Paths')) {
         output <- system(syscall, intern=T)
         if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
         if(!any(grepl(paste0(' ',dockername,'$'), output))) {
+          if(!quiet) print('Restarting container')
           syscall <- paste('docker start', dockername)
           if(echo) print(paste('System call:', syscall))
           output <- system(syscall, intern=T)
@@ -379,6 +384,7 @@ if(!exists('Paths')) {
           output <- system(syscall, intern=T)
           if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
           if(any(grepl(paste0(' ',dockername,'$'), output))) {
+            if(!quiet) print('Trying to update underlying image')
             syscall <- paste('docker stop', dockername) # May be overkill, but doesn't harm
             if(echo) print(paste('System call:', syscall))
             output <- system(syscall, intern=T)
@@ -431,6 +437,7 @@ if(!exists('Paths')) {
           output <- system(syscall, intern=T)
           if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
           if(!any(grepl(paste0(' ',dockername,'$'), output))) {
+            if(!quiet) print('Restarting container')
             syscall <- paste('docker start', dockername)
             if(echo) print(paste('System call:', syscall))
             output <- system(syscall, intern=T)
@@ -440,8 +447,10 @@ if(!exists('Paths')) {
         } else {
           if(is.null(path)) path <- paste0(Paths$MongoData, dockername) # Omission of / is intentional
           if(checkport) {
-            while(suppressWarnings(length(system(paste0('lsof -n | grep TCP.*',port,'.*LISTEN'), intern = T))!=0)) port <- port+1
+            if(!quiet) print('Checking for free port')
+            while(suppressWarnings(length(system(paste0('lsof -nP | grep TCP.*',port,'.*LISTEN'), intern = T))!=0)) port <- port+1
           }
+          if(!quiet) print('And starting container')
           syscall <- paste0('docker run --name ',dockername,' -v ',path,':/data/db -p ',port,':27017 -d '
                             ,imagename, ' --logpath /data/db/log.log',ifelse(is.null(user),'',' --auth'))
           if(echo) print(paste('System call:', syscall))
@@ -456,6 +465,7 @@ if(!exists('Paths')) {
       }
       if(inclView) {
         if(!newView) {
+          if(!quiet) print('Checking if a view-process is already initialized')
           syscall <- 'docker ps -a'
           if(echo) print(paste('System call:', syscall))
           output <- system(syscall, intern=T)
@@ -465,7 +475,15 @@ if(!exists('Paths')) {
             if(echo) print(paste('System call:', syscall))
             output <- fromJSON(system(syscall, intern=T))
             if(echo) print(paste0('Returned JSON-object of ',length(output),' fields.'))
-            newView <- !any(grepl(dockername, output$HostConfig$Links, fixed = T))
+            if(!any(grepl(dockername, output$HostConfig$Links, fixed = T))) {
+              newView <- T
+              if(checkport) {
+                syscall <- 'docker rename mongoview prev_view'
+                if(echo) print(paste('System call:', syscall))
+                output <- system(syscall, intern=T)
+                if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
+              }
+            }
           }
         } # Check first if runnning mongoview-container is linking to the right mongo
         if(newView) {
@@ -519,15 +537,17 @@ if(!exists('Paths')) {
         if(!any(grepl('mongoview *$', output))) {
           imagename <- substring(output[grepl(paste0(' ',dockername,'$'), output)],21,40)
           imagename <- gsub(' *$','', imagename)
+          if(checkport) while(suppressWarnings(length(system(paste0('lsof -nP | grep TCP.*',viewport,'.*LISTEN'), intern = T))!=0)) viewport <- viewport+1
+          if(!quiet) print('Starting viewer-container')
           if(!is.null(user)) {
             syscall <- paste0('docker run --link ',dockername,':',imagename,
-                              ' -p 8081:8081 --name mongoview -e ME_CONFIG_MONGODB_ADMINUSERNAME="',user,
+                              ' -p ',viewport,':8081 --name mongoview -e ME_CONFIG_MONGODB_ADMINUSERNAME="',user,
                               '" -e ME_CONFIG_MONGODB_ADMINPASSWORD="', pswd,
                               '" -e ME_CONFIG_BASICAUTH_USERNAME="', user,
                               '" -e ME_CONFIG_BASICAUTH_PASSWORD="', pswd,
                               '" -d mongo-express')
           } else {
-            syscall <- paste0('docker run --link ',dockername,':',imagename,' -p 8081:8081 --name mongoview -d mongo-express')
+            syscall <- paste0('docker run --link ',dockername,':',imagename,' -p ',viewport,':8081 --name mongoview -d mongo-express')
           }
           if(echo) print(paste('System call:', syscall))
           output <- system(syscall, intern=T)
@@ -541,6 +561,7 @@ if(!exists('Paths')) {
       output <- system(syscall, intern=T)
       if(echo) print(paste('Output:', output)[if(is.numeric(echo)) {1:min(echo,length(output))} else {T}])
       if(!any(grepl(' mongoview$', output))) {
+        if(!quiet) print('Restarting viewer container')
         syscall <- 'docker start mongoview'
         if(echo) print(paste('System call:', syscall))
         output <- system(syscall, intern=T)
@@ -557,7 +578,7 @@ if(!exists('Paths')) {
       if(is.null(dockername)) {
         return(mongo)
       } else {
-        return(OpenMongo(DBName, collection, port=port, quiet=quiet, echo=echo))
+        return(OpenMongo(DBName, collection, port=port, quiet=quiet, echo=echo, checkport=checkport))
       }
     }
   }
@@ -577,6 +598,36 @@ if(!exists('Paths')) {
     return(file)
   }
   '%!in%' <- function(x,y)!('%in%'(x,y))
+  checkMasking <- function(allowed=data.frame(name=character(), env=character())) {
+    allls <- sapply(search(), ls)
+    allls <- data.frame(name=unlist(allls, use.names = F), 
+                        env=as.factor(unlist(sapply(names(allls), function(x) {rep(x, times=length(allls[[x]]))}))),
+                        stringsAsFactors = F, row.names = c())
+    dupl <- allls[duplicated(allls$name) | duplicated(allls$name, fromLast = T),]
+    dupl <- dupl[!sapply(dupl$name, function(x) {class(get(x))}) %in% c('standardGeneric'),]
+    dupl$env <- sub('package:','',fixed=T, dupl$env)
+    allowed <- as.character(allowed$name[paste0(allowed$name, allowed$env) %in% paste0(dupl$name, dupl$env)[!duplicated(dupl$name)] | dupl$env=='any'])
+    mentions <- sapply(c(Paths$NowRunningScripts,getSrcFilename(function(x) {x}, full.names = T)), function(f) {
+      if(is.null(f) || is.na(f) || f=='') return(list())
+      lines <- readLines(f)
+      lines <- gsub('(#.*$)|(\'.*?\')|(, [a-z]+=)','', lines)
+      lines <- lines[lines!='']
+      allowed <- unique(c(allowed, dupl$name[sapply(dupl$name, function(x) {
+        isTRUE(grep(x, lines)[1]==grep(paste0(x,' ?<- ?[a-z]+::',x), lines)[1])
+      })]))
+      regexes <- unique(paste0('\\b',dupl$name[grepl('^[a-z]*$', dupl$name)&!dupl$name %in% allowed],'\\b'))
+      fixed <- unique(dupl$name[!grepl('^[a-z]*$', dupl$name)])
+      lines <- gsub('[a-z]+::[a-z]+','', lines)
+      lines <- lines[apply(sapply(regexes, function(r) {
+        grepl(r, lines)
+      }), 1, any) |
+        apply(sapply(fixed, function(r) {
+          grepl(r, lines, fixed=T)
+        }), 1, any)]
+    })
+    if(!all(sapply(mentions, length)==0)) return(mentions)
+    return(invisible(0))
+  }
 }
 
 

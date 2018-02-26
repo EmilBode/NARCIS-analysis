@@ -1504,7 +1504,7 @@ if(Step=='ParseRecords') {
   if(is.null(Params$Resume$RecordParse)) {
     RDSfiles <- data.frame(name=list.files(path=Paths$Parsed, pattern='.*\\.(rds|RDS)', full.name=F), stringsAsFactors = F)
     if(Params$debug) {
-      RDSfiles$time <- file.mtime(paste0(Paths$Parsed,'/',RDSfiles$name))
+      RDSfiles$time <- file.mtime(if(nrow(RDSfiles)>0) paste0(Paths$Parsed,'/',RDSfiles$name) else character())
       RDSfiles <- RDSfiles[RDSfiles$time<Params$WayBack,]
       RDSfiles$time <- NULL
     }
@@ -1712,28 +1712,12 @@ if(Step=='ParseRecords') {
             header=data.frame(do.call(rbind.fill,lapply(Recs, function(x) {
               data.frame(lapply(xmlChildren(x[['header']]), xmlValue),stringsAsFactors = F)
             }))),
-            ID=sapply(Recs, function(x) {
-              Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl']][['DIDL']])
-              if('DIDLDocumentId' %in% names(Attrs)) {
-                ID <- Attrs[['DIDLDocumentId']]
-                Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl_norm']][['DIDL']])
-                if('DIDLDocumentId' %in% names(Attrs) && ID!=Attrs[['DIDLDocumentId']]) stop('Differing IDs in nl_didl and nl_didl_norm (line ',getSrcLocation(function(x) {x}),')')
-              } else {
-                Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl_norm']][['DIDL']])
-                if('DIDLDocumentId' %in% names(Attrs)) {
-                  ID <- Attrs[['DIDLDocumentId']]
-                } else {
-                  ID <- NA
-                }
-              }
-              return(ID)
-            }),
             nldidl=I(lapply(Recs, function(x) {
-              xmlToList(x[[2]][[1]][[1]][[1]][['Item']])
+              xmlToList(x[['metadata']][['nl_didl_combined']][['nl_didl']][['DIDL']])
             })),
             norm=I(simple_rapply(
               lapply(Recs, function(x) {
-                xmlToList(x[[2]][[1]][[2]][[1]][['Item']])
+                xmlToList(x[['metadata']][['nl_didl_combined']][['nl_didl_norm']][['DIDL']])
               }),
               function(x) {
                 if(is.null(x)) {
@@ -1750,86 +1734,79 @@ if(Step=='ParseRecords') {
             }))),
             stringsAsFactors=F
           )
-          ul <- lapply(OneRecdf$norm, unlist)
-          if(Params$debug) stop('Debug-DAI (line ',getSrcLocation(function(x) {x}),')')
-          OneRecdf$DAI <- lapply(OneRecdf$norm, function(x) {
-            auts <- x$Item$Component$Resource$mods
-            auts <- auts[names(auts)=='name']
-            return(lapply(auts, function(a) {
-              DAIs <- sapply(a[names(a)=='nameIdentifier'], function(id) {
-                if('info:eu-repo/dai/nl' %in% id$.attrs) {
-                  return(id$text)
-                } else {
-                  return(NA)
-                }
-              })
-              DAIs <- DAIs[!is.na(DAIs)]
-              if(length(DAIs)==0) return(NA) else return(DAIs)
-            }))
-            
-            
-            idcs <- which(x=='dai-nl')-1
-            idcs <- idcs-ifelse(x[idcs+2]=='info:eu-repo/dai/nl',0,1)
-            namech <- names(x[rep(idcs, each=3)+0:2])
-            if(length(namech)>0) {
-              temporder <- c(sapply(3*1:(length(namech)/3), function(i) {
-                order(namech[(i-2):i])[c(3,1,2)]
-              })) + rep(idcs, each=3)-1
-              x <- x[temporder]
-              idcs <- 1:length(idcs)*3-2
-              namech <- names(x[rep(idcs, each=3)+0:2])
-              namech <- substring(namech,c(34,56,56),99999)
-            } # Putting individual labelnames in alphabetical order, and discarding non-dai info
-            if(any(namech!=c('.nameIdentifier.text','.type','.typeURI')) ||
-               any(x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl'))) {
-              if(any(namech!=c('.nameIdentifier.text','.type','.typeURI'))) {
-                tempWhichError <- (which(namech!=c('.nameIdentifier.text','.type','.typeURI')) %/% 3) +1
-                tempError <- paste0('DAIError: Name is ',
-                                    namech[namech!=c('.nameIdentifier.text','.type','.typeURI')],
-                                    ' instead of ',
-                                    rep(c('.nameIdentifier.text','.type','.typeURI'), length.out=length(namech))[namech!=c('.nameIdentifier.text','.type','.typeURI')],
-                                    ' in record with ID ',
-                                    x[1])
+          OneRecdf$IDs <- mapply(c, lapply(Recs, function(x) {
+            Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl']][['DIDL']])
+            if('DIDLDocumentId' %in% names(Attrs)) {
+              ID <- Attrs[['DIDLDocumentId']]
+              Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl_norm']][['DIDL']])
+              if('DIDLDocumentId' %in% names(Attrs) && ID!=Attrs[['DIDLDocumentId']]) stop('Differing IDs in nl_didl and nl_didl_norm (line ',getSrcLocation(function(x) {x}),')')
+            } else {
+              Attrs <- xmlAttrs(x[['metadata']][['nl_didl_combined']][['nl_didl_norm']][['DIDL']])
+              if('DIDLDocumentId' %in% names(Attrs)) {
+                ID <- Attrs[['DIDLDocumentId']]
               } else {
-                tempError <- NULL
-                tempWhichError <- NULL
+                ID <- NA
               }
-              if(any(x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl'))) {
-                tempWhichError <- c(tempWhichError, (which(x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl')) %/% 2) +1)
-                tempError <- c(tempError, paste0('DAIError: Content is ',
-                                    x[rep(idcs, each=2)+1:2][x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl')],
-                                    ' instead of ',
-                                    c('dai-nl', 'info:eu-repo/dai/nl')[rep(idcs, each=2)+1:2][x[rep(idcs, each=2)+1:2]!=c('dai-nl', 'info:eu-repo/dai/nl')],
-                                    ' in record with ID ',
-                                    x[1]))
-              }
-              idcs <- idcs[-tempWhichError]
-              print(paste('Errors in looking for DAIs in file',n))
-              Errors$RecParse <<- rbind.fill(Errors$RecParse, data.frame(
-                bad=tempError,
-                repl='removed from DAI-list',
-                fileno=n,
-                recNo=which(sapply(ul, function(y) {y['Descriptor.Statement.Identifier']})==x['Descriptor.Statement.Identifier'])))
-              rm(tempWhichError)
-              rm(tempError)
             }
-            dai <- as.character(x[idcs])
-            if(any(is.na(dai))) stop("DAI can't be converted to character")
-            return(dai)
+            return(list(local=ID, 
+                        provenance=xmlValue(x$about[['provenance']][['originDescription']][['identifier']])))}),
+                            lapply(OneRecdf$nldidl, function(x) {
+                              modIDs <- x$Item$Item$Component$Resource$mods
+                              modIDs <- modIDs[names(modIDs)=='identifier']
+                              if(any(sapply(modIDs, function(i) {!all(names(i$.attrs)=='type')}))) 
+                                stop('Unknown ID-attributes, check first  (line ',getSrcLocation(function(x) {x}),')')
+                              modIDs <- setNames(object=sapply(modIDs, function(i) {i$text}),
+                                                 nm=sapply(modIDs, function(i) {i$.attrs}))
+                              return(c(local=x$Item$Descriptor$Statement$Identifier, modIDs))
+                            }),
+                            lapply(OneRecdf$norm, function(x) {
+                              modIDs <- x$Item$Item$Component$Resource$mods
+                              modIDs <- modIDs[names(modIDs)=='identifier']
+                              if(any(sapply(modIDs, function(i) {!all(names(i$.attrs)=='type')}))) 
+                                stop('Unknown ID-attributes, check first  (line ',getSrcLocation(function(x) {x}),')')
+                              modIDs <- setNames(object=sapply(modIDs, function(i) {i$text}),
+                                                 nm=sapply(modIDs, function(i) {i$.attrs}))
+                              return(c(local=x$Item$Descriptor$Statement$Identifier, modIDs))
+                            }), 
+            SIMPLIFY=F)
+          OneRecdf$IDs <- lapply(OneRecdf$IDs, function(x) {
+            df <- data.frame(type=names(x),
+                             ID=unlist(x),
+                             inOrig=T)
+            return(unique(df))
+          })
+          OneRecdf$AutIDs <- lapply(OneRecdf$norm, function(x) {
+            auts <- which(names(x$Item$Item$Component$Resource$mods)=='name')
+            auts <- x$Item$Item$Component$Resource$mods[auts]
+            auts <- auts[names(auts)=='name']
+            autIDs <- lapply(auts, function(au) {
+              IDs <- au[names(au)=='nameIdentifier']
+              list(
+              IDs=data.frame(Type=as.character(unname(sapply(IDs, function(i) {i$.attrs[names(i$.attrs)=='type']}))),
+                         ID=as.character(unname(sapply(IDs, function(i) {i$text}))),
+                         inOrig=!logical(length(IDs)), stringsAsFactors = F),
+              role=unname(sapply(au$role, function(r) {r$text})))
+            })
           })
           OneRecdf$Journal <- lapply(OneRecdf$norm, function(x) {
-            rels <- which(names(x[['Item']][['Component']][['Resource']][['mods']])=='relatedItem')
-            rels <- x[['Item']][['Component']][['Resource']][['mods']][rels]
-            hosts <- rels[vapply(rels, function(r) {
+            rels <- which(names(x[['Item']][['Item']][['Component']][['Resource']][['mods']])=='relatedItem')
+            rels <- x[['Item']][['Item']][['Component']][['Resource']][['mods']][rels]
+            rels <- rels[vapply(rels, function(r) {
               all(r[['.attrs']][names(r[['.attrs']])=='type']=='host')
             }, logical(1))]
+            if(length(rels)>1) stop('More than 1 journal. Check first (line ',getSrcLocation(function(x) {x}),')')
+            list(title=rels$relatedItem$titleInfo$title,
+                 subtitle=rels$relatedItem$titleInfo[['subTitle']],
+                 publisher='ToDo',
+                 IDs=data.frame(type=as.character(unname(sapply(rels$relatedItem[names(rels$relatedItem)=='identifier'], function(i) {i$.attrs[names(i$.attrs)=='type']}))),
+                                ID=as.character(unname(sapply(rels$relatedItem[names(rels$relatedItem)=='identifier'], function(i) {i$text})))))
           })
-          OneRecdf$Subject <- lapply(OneRecdf$norm, function(x) {
-            x[['Item']][['Component']][['Resource']][['mods']][['subject']]
-          })
-          # OneRecdf$Type <- lapply(OneRecdf$norm, function(x) { ----
-          #   x[['Item']][['Component']][['Resource']][['mods']][['genre']]
-          # })
+          OneRecdf$Keywords <- unname(lapply(OneRecdf$nldidl, function(x) {
+            unlist(x[['Item']][['Item']][['Component']][['Resource']][['mods']][['subject']], use.names = F)
+          }))
+          OneRecdf$Type <- unname(lapply(OneRecdf$norm, function(x) {
+             x[['Item']][['Item']][['Component']][['Resource']][['mods']][['genre']]
+          }))
           OneRecdf$filenr <- n
         } else {
           OneRecdf <- data.frame()
@@ -1854,7 +1831,6 @@ if(Step=='ParseRecords') {
       #}) # Closing profvis
     }
     print('Parsing complete')
-    
     if(nrow(Errors$RecParse)>0) {
       Errors$SummaryOfRecParse <- data.frame(type=as.character(NA), subtype=as.character(NA), bad=unique(Errors$RecParse$bad), count=as.numeric(NA), stringsAsFactors = F)
       Errors$SummaryOfRecParse$bad <- as.character(Errors$SummaryOfRecParse$bad)
@@ -1870,6 +1846,7 @@ if(Step=='ParseRecords') {
     }
     Errors$UpToStep <- 'ParseRecords'
     saveRDS(Errors, file=paste0(Paths$Summaries,'/ErrorsUpToParseRecords (temp) (',gsub('[^0-9]+','',as.character(Sys.time())),').rds'))
+    stop('Debug')
   }
   Step <- 'MergeRecords'
 }
